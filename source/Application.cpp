@@ -8,6 +8,18 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
 {
     switch (message)
     {
+    case WM_SIZE:
+        if (wParam != SIZE_MINIMIZED)
+        {
+            OnWindowResized(LOWORD(lParam), HIWORD(lParam));
+            Render();
+        }
+        return 0;
+
+    case WM_GETMINMAXINFO:
+        ((MINMAXINFO*)lParam)->ptMinTrackSize = { 320, 240 };
+        return 0;
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -34,7 +46,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     RECT rc;
     SetRect(&rc, 0, 0, 1920, 1080);
 
-	DWORD windowStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
+	DWORD windowStyle = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
     AdjustWindowRect(&rc, windowStyle, FALSE);
 
     HWND hWnd = CreateWindow(

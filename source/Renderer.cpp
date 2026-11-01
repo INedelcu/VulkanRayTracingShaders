@@ -11,6 +11,9 @@ uint32_t    g_FrameIndex = 0;
 VkShaderModule g_RayGenShader = VK_NULL_HANDLE;
 Image          g_OutputImage;
 
+bool           g_RendererReady = false;
+bool           g_WindowResized = false;
+
 static bool UpdateOutputImage()
 {
     if (g_OutputImage.extent.width == g_VkSwapChainExtent.width && g_OutputImage.extent.height == g_VkSwapChainExtent.height)
@@ -62,11 +65,21 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         OutputDebugString(message);
     }
 
+    g_RendererReady = true;
+
     return true;
+}
+
+void OnWindowResized(uint32_t width, uint32_t height)
+{
+    if (g_RendererReady && (width != g_VkSwapChainExtent.width || height != g_VkSwapChainExtent.height))
+        g_WindowResized = true;
 }
 
 void ShutdownRenderer()
 {
+    g_RendererReady = false;
+
     if (g_VkDevice != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(g_VkDevice);
@@ -87,31 +100,36 @@ void ShutdownRenderer()
     ShutdownVulkan();
 }
 
-void Render()
+static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
 {
     if (g_VkSwapChain == VK_NULL_HANDLE && !RecreateSwapChain())
-        return;
+        return VK_NULL_HANDLE;
 
     vkWaitForFences(g_VkDevice, 1, &g_VkFrameFence[g_CurrentFrame], VK_TRUE, (uint64_t)-1);
 
-    if (!UpdateOutputImage())
-        return;
+    if (g_WindowResized)
+    {
+        if (!RecreateSwapChain())
+            return VK_NULL_HANDLE;
 
-    uint32_t imageIndex;
+        g_WindowResized = false;
+    }
+
+    if (!UpdateOutputImage())
+        return VK_NULL_HANDLE;
+
     VkResult result = vkAcquireNextImageKHR(g_VkDevice, g_VkSwapChain, (uint64_t)-1, g_VkImageAvailableSemaphore[g_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
         RecreateSwapChain();
-        return;
+        return VK_NULL_HANDLE;
     }
 
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-        return;
+        return VK_NULL_HANDLE;
 
     vkResetFences(g_VkDevice, 1, &g_VkFrameFence[g_CurrentFrame]);
-
-    VkImage swapChainImage = g_VkSwapChainImages[imageIndex];
 
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -122,6 +140,11 @@ void Render()
 
     vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
+    return cmdBuffer;
+}
+
+static void RenderFrame(VkCommandBuffer cmdBuffer)
+{
 #ifdef VK_KHR_acceleration_structure
     BuildTLAS(cmdBuffer, g_CurrentFrame);
 #endif
@@ -146,6 +169,11 @@ void Render()
 
     TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                     VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+}
+
+static void EndFrame(VkCommandBuffer cmdBuffer, uint32_t imageIndex)
+{
+    VkImage swapChainImage = g_VkSwapChainImages[imageIndex];
 
     TransitionImage(cmdBuffer, swapChainImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
@@ -178,7 +206,7 @@ void Render()
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    vkQueueSubmit(g_VkQueue, 1, &submitInfo, g_VkFrameFence[g_CurrentFrame]);;
+    vkQueueSubmit(g_VkQueue, 1, &submitInfo, g_VkFrameFence[g_CurrentFrame]);
 
     // Present
     VkPresentInfoKHR presentInfo = {};
@@ -191,7 +219,7 @@ void Render()
     presentInfo.pResults = nullptr;
     presentInfo.pImageIndices = &imageIndex;
 
-    result = vkQueuePresentKHR(g_VkQueue, &presentInfo);
+    VkResult result = vkQueuePresentKHR(g_VkQueue, &presentInfo);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
         RecreateSwapChain();
@@ -199,4 +227,20 @@ void Render()
     g_CurrentFrame = (g_CurrentFrame + 1) % g_MaxFramesInFlight;
 
     g_FrameIndex++;
+}
+
+void Render()
+{
+    if (!g_RendererReady)
+        return;
+
+    uint32_t imageIndex = 0;
+    VkCommandBuffer cmdBuffer = BeginFrame(imageIndex);
+
+    if (cmdBuffer == VK_NULL_HANDLE)
+        return;
+
+    RenderFrame(cmdBuffer);
+
+    EndFrame(cmdBuffer, imageIndex);
 }
