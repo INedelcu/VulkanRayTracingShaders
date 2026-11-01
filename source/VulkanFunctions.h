@@ -8,11 +8,6 @@
     macro(vkEnumerateInstanceLayerProperties) \
     macro(vkEnumerateInstanceVersion) \
 
-#define VK_LOAD_INSTANCE_FUNCTION(vkInstance, f)                  \
-    if (!(f = (PFN_##f)vkGetInstanceProcAddr(vkInstance, #f)))    \
-      return false;
-
-
 #ifdef VK_KHR_win32_surface
 #define VULKAN_MACRO_EXT_VK_KHR_win32_surface(macro) \
     macro(vkCreateWin32SurfaceKHR) \
@@ -65,6 +60,29 @@
 #define VULKAN_MACRO_EXT_VK_KHR_acceleration_structure(macro)
 #endif
 
+#ifdef VK_KHR_ray_tracing_pipeline
+#define VULKAN_MACRO_EXT_VK_KHR_ray_tracing_pipeline(macro) \
+    macro(vkCreateRayTracingPipelinesKHR) \
+    macro(vkGetRayTracingShaderGroupHandlesKHR) \
+    macro(vkCmdTraceRaysKHR)
+#else
+#define VULKAN_MACRO_EXT_VK_KHR_ray_tracing_pipeline(macro)
+#endif
+
+#ifdef VK_EXT_descriptor_heap
+#define VULKAN_MACRO_EXT_VK_EXT_descriptor_heap(macro) \
+    macro(vkWriteResourceDescriptorsEXT) \
+    macro(vkWriteSamplerDescriptorsEXT) \
+    macro(vkCmdBindResourceHeapEXT) \
+    macro(vkCmdBindSamplerHeapEXT) \
+    macro(vkCmdPushDataEXT)
+#define VULKAN_MACRO_EXT_VK_EXT_descriptor_heap_physical_device(macro) \
+    macro(vkGetPhysicalDeviceDescriptorSizeEXT)
+#else
+#define VULKAN_MACRO_EXT_VK_EXT_descriptor_heap(macro)
+#define VULKAN_MACRO_EXT_VK_EXT_descriptor_heap_physical_device(macro)
+#endif
+
 #define VULKAN_INSTANCE_FUNCTION_LIST(macro) \
     macro(vkDestroyInstance) \
     macro(vkEnumeratePhysicalDevices) \
@@ -79,7 +97,8 @@
     macro(vkEnumerateDeviceExtensionProperties) \
     VULKAN_EXTENSION_LIST(VK_KHR_win32_surface, macro)  \
     VULKAN_EXTENSION_LIST(VK_KHR_surface, macro) \
-    VULKAN_EXTENSION_LIST(VK_EXT_debug_utils, macro)
+    VULKAN_EXTENSION_LIST(VK_EXT_debug_utils, macro) \
+    VULKAN_EXTENSION_LIST(VK_EXT_descriptor_heap_physical_device, macro)
 
 #define VULKAN_DEVICE_FUNCTION_LIST(macro) \
     macro(vkGetDeviceQueue) \
@@ -115,7 +134,11 @@
     macro(vkGetBufferMemoryRequirements) \
     macro(vkCreateShaderModule) \
     macro(vkDestroyShaderModule) \
+    macro(vkCmdBindPipeline) \
+    macro(vkDestroyPipeline) \
     VULKAN_EXTENSION_LIST(VK_KHR_acceleration_structure, macro) \
+    VULKAN_EXTENSION_LIST(VK_KHR_ray_tracing_pipeline, macro) \
+    VULKAN_EXTENSION_LIST(VK_EXT_descriptor_heap, macro) \
     VULKAN_EXTENSION_LIST(VK_KHR_swapchain, macro)
 
 VULKAN_GLOBAL_FUNCTION_LIST(VULKAN_EXTERN_FUNCTION_POINTER)
