@@ -16,8 +16,6 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM l
     return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
-HWND g_hWndApp;
-
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int nCmdShow)
 {
     WNDCLASS wc = {};
@@ -39,7 +37,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	DWORD windowStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
     AdjustWindowRect(&rc, windowStyle, FALSE);
 
-    g_hWndApp = CreateWindow(
+    HWND hWnd = CreateWindow(
         APP_CLASS_NAME,
         "Vulkan Ray Tracing Shaders",
         windowStyle,
@@ -52,12 +50,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
         hInstance,
         NULL);
 
-    if (g_hWndApp == NULL)
+    if (hWnd == NULL)
         return 0;
 
-    ShowWindow(g_hWndApp, SW_NORMAL);
+    ShowWindow(hWnd, SW_NORMAL);
 
-    if (!InitializeRenderer(hInstance, g_hWndApp))
+    if (!InitializeRenderer(hInstance, hWnd))
         return 0;
 
     MSG msg = {};
@@ -68,7 +66,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-        else if (IsIconic(g_hWndApp))
+        else if (IsIconic(hWnd))
         {
             WaitMessage();
         }
