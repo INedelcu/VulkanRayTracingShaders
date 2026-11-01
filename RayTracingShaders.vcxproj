@@ -89,6 +89,8 @@
     <ClInclude Include="source\MathUtils.h" />
     <ClInclude Include="source\RayTracingScene.h" />
     <ClInclude Include="source\Renderer.h" />
+    <ClInclude Include="source\ShaderReflection.h" />
+    <ClInclude Include="source\Shaders.h" />
     <ClInclude Include="source\SharedTypes.h" />
     <ClInclude Include="source\VulkanBuffers.h" />
     <ClInclude Include="source\VulkanDevice.h" />
@@ -99,10 +101,34 @@
     <ClCompile Include="source\Geometry.cpp" />
     <ClCompile Include="source\RayTracingScene.cpp" />
     <ClCompile Include="source\Renderer.cpp" />
+    <ClCompile Include="source\ShaderReflection.cpp" />
+    <ClCompile Include="source\Shaders.cpp" />
     <ClCompile Include="source\VulkanBuffers.cpp" />
     <ClCompile Include="source\VulkanDevice.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="shaders\RayGen.hlsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <PropertyGroup>
+    <DxcPath>$(VULKAN_SDK)\Bin\dxc.exe</DxcPath>
+    <ShaderOutDir>$(OutDir)shaders\</ShaderOutDir>
+    <ShaderIncludes>$(MSBuildProjectDirectory)\source\SharedTypes.h;$([System.String]::Join(';', $([System.IO.Directory]::GetFiles('$(MSBuildProjectDirectory)\shaders', '*.hlsli'))))</ShaderIncludes>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <CustomBuild>
+      <Message>Compiling %(Identity) to %(Filename).spv</Message>
+      <Command>"$(DxcPath)" -T lib_6_3 -spirv -fspv-target-env=vulkan1.2 -fspv-extension=SPV_KHR_ray_tracing -fvk-use-scalar-layout -auto-binding-space 0 -HV 2021 -I "$(MSBuildProjectDirectory)\shaders" -I "$(MSBuildProjectDirectory)\source" -Fo "$(ShaderOutDir)%(Filename).spv" "%(FullPath)"</Command>
+      <Outputs>$(ShaderOutDir)%(Filename).spv</Outputs>
+      <AdditionalInputs>$(ShaderIncludes)</AdditionalInputs>
+      <BuildInParallel>true</BuildInParallel>
+    </CustomBuild>
+  </ItemDefinitionGroup>
+  <Target Name="CheckVulkanSdk" BeforeTargets="CustomBuild" Condition="'@(CustomBuild)' != ''">
+    <Error Condition="'$(VULKAN_SDK)' == ''" Text="The HLSL shaders need dxc from the Vulkan SDK, but the Vulkan SDK is not installed (VULKAN_SDK is not set). Install it from https://vulkan.lunarg.com and restart Visual Studio." />
+    <Error Condition="'$(VULKAN_SDK)' != '' And !Exists('$(DxcPath)')" Text="The HLSL shaders need dxc from the Vulkan SDK, but $(DxcPath) does not exist. Reinstall the Vulkan SDK from https://vulkan.lunarg.com." />
+    <MakeDir Directories="$(ShaderOutDir)" />
+  </Target>
 </Project>

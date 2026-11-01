@@ -1,9 +1,13 @@
 #include "Renderer.h"
 #include "VulkanDevice.h"
 #include "RayTracingScene.h"
+#include "Shaders.h"
+#include "ShaderReflection.h"
 
 size_t		g_CurrentFrame = 0;
 uint32_t    g_FrameIndex = 0;
+
+VkShaderModule g_RayGenShader = VK_NULL_HANDLE;
 
 bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 {
@@ -14,6 +18,26 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
     CreateRayTracingScene();
 #endif
 
+    const std::vector<uint32_t> rayGenSpirv = LoadSpirv("RayGen");
+
+    if (!rayGenSpirv.empty())
+        g_RayGenShader = CreateShaderModule(rayGenSpirv, "RayGen");
+
+    if (g_RayGenShader == VK_NULL_HANDLE)
+    {
+        MessageBox(hWnd, "Couldn't load shaders\\RayGen.spv. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
+    }
+
+    const ShaderReflection rayGenReflection(rayGenSpirv);
+
+    for (const ShaderResourceBinding& binding : rayGenReflection.Bindings())
+    {
+        char message[256];
+        _snprintf_s(message, _TRUNCATE, "RayGen.spv: %s = set %u, binding %u\n", binding.name.c_str(), binding.set, binding.binding);
+        OutputDebugString(message);
+    }
+
     return true;
 }
 
@@ -22,6 +46,12 @@ void ShutdownRenderer()
     if (g_VkDevice != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(g_VkDevice);
+    }
+
+    if (g_RayGenShader != VK_NULL_HANDLE)
+    {
+        vkDestroyShaderModule(g_VkDevice, g_RayGenShader, nullptr);
+        g_RayGenShader = VK_NULL_HANDLE;
     }
 
 #ifdef VK_KHR_acceleration_structure

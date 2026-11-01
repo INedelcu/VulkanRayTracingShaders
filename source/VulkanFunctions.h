@@ -113,6 +113,8 @@
     macro(vkUnmapMemory) \
     macro(vkFreeMemory) \
     macro(vkGetBufferMemoryRequirements) \
+    macro(vkCreateShaderModule) \
+    macro(vkDestroyShaderModule) \
     VULKAN_EXTENSION_LIST(VK_KHR_acceleration_structure, macro) \
     VULKAN_EXTENSION_LIST(VK_KHR_swapchain, macro)
 
