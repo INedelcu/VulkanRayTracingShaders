@@ -56,7 +56,7 @@ static void CreateMeshes()
 {
     const VkBufferUsageFlags geometryUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 
-    const MeshData meshData[] = { CreateQuad(), CreateCube(), CreateUvSphere(64, 32), CreateTorus(1.0f, 0.32f, 96, 32) };
+    const MeshData meshData[] = { CreateQuad(), CreateCube(), CreateUvSphere(128, 64), CreateTorus(1.0f, 0.32f, 256, 64) };
     const char* meshNames[] = { "Quad", "Cube", "Sphere", "Torus" };
 
     for (size_t i = 0; i < std::size(meshData); i++)

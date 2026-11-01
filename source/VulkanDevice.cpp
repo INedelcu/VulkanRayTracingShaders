@@ -32,6 +32,7 @@ VkSurfaceKHR                g_VkPresentationSurface = VK_NULL_HANDLE;
 #ifdef VK_KHR_swapchain
 VkSwapchainKHR              g_VkSwapChain = VK_NULL_HANDLE;
 std::vector<VkImage>        g_VkSwapChainImages;
+VkExtent2D                  g_VkSwapChainExtent = {};
 #endif
 
 #ifdef VK_EXT_debug_utils
@@ -190,6 +191,8 @@ bool CreateSwapChain()
         g_VkSwapChain = VK_NULL_HANDLE;
         return false;
     }
+
+    g_VkSwapChainExtent = createInfo.imageExtent;
 
     unsigned int imageCount;
     vkGetSwapchainImagesKHR(g_VkDevice, g_VkSwapChain, &imageCount, nullptr);

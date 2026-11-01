@@ -46,6 +46,7 @@ extern std::vector<VkCommandBuffer>         g_VkCommandBuffers;
 #ifdef VK_KHR_swapchain
 extern VkSwapchainKHR                       g_VkSwapChain;
 extern std::vector<VkImage>                 g_VkSwapChainImages;
+extern VkExtent2D                           g_VkSwapChainExtent;
 #endif
 
 bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd);

@@ -95,6 +95,7 @@
     <ClInclude Include="source\VulkanBuffers.h" />
     <ClInclude Include="source\VulkanDevice.h" />
     <ClInclude Include="source\VulkanFunctions.h" />
+    <ClInclude Include="source\VulkanImages.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\Application.cpp" />
@@ -105,6 +106,7 @@
     <ClCompile Include="source\Shaders.cpp" />
     <ClCompile Include="source\VulkanBuffers.cpp" />
     <ClCompile Include="source\VulkanDevice.cpp" />
+    <ClCompile Include="source\VulkanImages.cpp" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="shaders\RayGen.hlsl" />

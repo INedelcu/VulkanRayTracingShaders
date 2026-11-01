@@ -117,12 +117,18 @@
     macro(vkAllocateCommandBuffers) \
     macro(vkFreeCommandBuffers) \
     macro(vkCmdPipelineBarrier) \
+    macro(vkCmdPipelineBarrier2) \
     macro(vkBeginCommandBuffer) \
     macro(vkEndCommandBuffer) \
     macro(vkQueueSubmit) \
     macro(vkWaitForFences) \
     macro(vkResetFences) \
     macro(vkCmdClearColorImage) \
+    macro(vkCmdBlitImage) \
+    macro(vkCreateImage) \
+    macro(vkDestroyImage) \
+    macro(vkGetImageMemoryRequirements) \
+    macro(vkBindImageMemory) \
     macro(vkAllocateMemory) \
     macro(vkCreateBuffer) \
     macro(vkDestroyBuffer) \

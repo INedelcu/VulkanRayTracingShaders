@@ -3,11 +3,29 @@
 #include "RayTracingScene.h"
 #include "Shaders.h"
 #include "ShaderReflection.h"
+#include "VulkanImages.h"
 
 size_t		g_CurrentFrame = 0;
 uint32_t    g_FrameIndex = 0;
 
 VkShaderModule g_RayGenShader = VK_NULL_HANDLE;
+Image          g_OutputImage;
+
+static bool UpdateOutputImage()
+{
+    if (g_OutputImage.extent.width == g_VkSwapChainExtent.width && g_OutputImage.extent.height == g_VkSwapChainExtent.height)
+        return true;
+
+    if (g_OutputImage.image != VK_NULL_HANDLE)
+    {
+        vkDeviceWaitIdle(g_VkDevice);
+        DestroyImage(g_OutputImage);
+    }
+
+    g_OutputImage = CreateImage(g_VkSwapChainExtent, VK_FORMAT_R32G32B32A32_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "Output");
+
+    return g_OutputImage.image != VK_NULL_HANDLE;
+}
 
 bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 {
@@ -17,6 +35,12 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 #ifdef VK_KHR_acceleration_structure
     CreateRayTracingScene();
 #endif
+
+    if (!UpdateOutputImage())
+    {
+        MessageBox(hWnd, "Couldn't create the output image. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
+    }
 
     const std::vector<uint32_t> rayGenSpirv = LoadSpirv("RayGen");
 
@@ -54,6 +78,8 @@ void ShutdownRenderer()
         g_RayGenShader = VK_NULL_HANDLE;
     }
 
+    DestroyImage(g_OutputImage);
+
 #ifdef VK_KHR_acceleration_structure
     DestroyRayTracingScene();
 #endif
@@ -67,6 +93,9 @@ void Render()
         return;
 
     vkWaitForFences(g_VkDevice, 1, &g_VkFrameFence[g_CurrentFrame], VK_TRUE, (uint64_t)-1);
+
+    if (!UpdateOutputImage())
+        return;
 
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(g_VkDevice, g_VkSwapChain, (uint64_t)-1, g_VkImageAvailableSemaphore[g_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
@@ -97,22 +126,8 @@ void Render()
     BuildTLAS(cmdBuffer, g_CurrentFrame);
 #endif
 
-    VkImageMemoryBarrier imageMemoryBarrier = {};
-    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    imageMemoryBarrier.image = swapChainImage;
-    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
-    imageMemoryBarrier.subresourceRange.levelCount = 1;
-    imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
-    imageMemoryBarrier.subresourceRange.layerCount = 1;
-    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.srcAccessMask = 0;
-    imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-    vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+	TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
     VkClearColorValue clearColor;
     clearColor.float32[0] = 0.85f;
@@ -127,14 +142,24 @@ void Render()
     range.levelCount = 1;
     range.layerCount = 1;
 
-    vkCmdClearColorImage(cmdBuffer, swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1, &range);
+    vkCmdClearColorImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1, &range);
 
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    imageMemoryBarrier.dstAccessMask = 0;
+    TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
 
-    vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+    TransitionImage(cmdBuffer, swapChainImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
+    VkImageBlit blit = {};
+    blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    blit.srcOffsets[1] = { (int32_t)g_OutputImage.extent.width, (int32_t)g_OutputImage.extent.height, 1 };
+    blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+    blit.dstOffsets[1] = { (int32_t)g_VkSwapChainExtent.width, (int32_t)g_VkSwapChainExtent.height, 1 };
+
+    vkCmdBlitImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
+
+    TransitionImage(cmdBuffer, swapChainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
 
     vkEndCommandBuffer(cmdBuffer);
 
