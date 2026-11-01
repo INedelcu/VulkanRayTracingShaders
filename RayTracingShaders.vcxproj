@@ -85,6 +85,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="source\Application.h" />
+    <ClInclude Include="source\DescriptorHeap.h" />
     <ClInclude Include="source\Geometry.h" />
     <ClInclude Include="source\MathUtils.h" />
     <ClInclude Include="source\RayTracingScene.h" />
@@ -99,6 +100,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\Application.cpp" />
+    <ClCompile Include="source\DescriptorHeap.cpp" />
     <ClCompile Include="source\Geometry.cpp" />
     <ClCompile Include="source\RayTracingScene.cpp" />
     <ClCompile Include="source\Renderer.cpp" />

@@ -4,12 +4,15 @@
 #include "Shaders.h"
 #include "ShaderReflection.h"
 #include "VulkanImages.h"
+#include "DescriptorHeap.h"
 
 size_t		g_CurrentFrame = 0;
 uint32_t    g_FrameIndex = 0;
 
 VkShaderModule g_RayGenShader = VK_NULL_HANDLE;
+DescriptorHeap g_ResourceHeap;
 Image          g_OutputImage;
+uint32_t       g_OutputImageSlot = UINT32_MAX;
 
 bool           g_RendererReady = false;
 bool           g_WindowResized = false;
@@ -27,7 +30,16 @@ static bool UpdateOutputImage()
 
     g_OutputImage = CreateImage(g_VkSwapChainExtent, VK_FORMAT_R32G32B32A32_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "Output");
 
-    return g_OutputImage.image != VK_NULL_HANDLE;
+    if (g_OutputImage.image == VK_NULL_HANDLE)
+        return false;
+
+    if (!g_ResourceHeap.WriteStorageImage(g_OutputImageSlot, g_OutputImage))
+    {
+        DestroyImage(g_OutputImage);
+        return false;
+    }
+
+    return true;
 }
 
 bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
@@ -38,6 +50,14 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 #ifdef VK_KHR_acceleration_structure
     CreateRayTracingScene();
 #endif
+
+    if (!g_ResourceHeap.Create(DescriptorHeap::Type::Resource, 1024, "Resource heap"))
+    {
+        MessageBox(hWnd, "Couldn't create the resource descriptor heap. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
+    }
+
+    g_OutputImageSlot = g_ResourceHeap.Allocate();
 
     if (!UpdateOutputImage())
     {
@@ -92,6 +112,7 @@ void ShutdownRenderer()
     }
 
     DestroyImage(g_OutputImage);
+    g_ResourceHeap.Destroy();
 
 #ifdef VK_KHR_acceleration_structure
     DestroyRayTracingScene();
@@ -145,6 +166,8 @@ static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
 
 static void RenderFrame(VkCommandBuffer cmdBuffer)
 {
+    g_ResourceHeap.Bind(cmdBuffer);
+
 #ifdef VK_KHR_acceleration_structure
     BuildTLAS(cmdBuffer, g_CurrentFrame);
 #endif

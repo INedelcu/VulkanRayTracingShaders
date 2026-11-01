@@ -18,6 +18,7 @@ struct PhysicalGfxDeviceInfo
     VkPhysicalDeviceMemoryProperties                    deviceMemoryProperties;
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR     deviceRayTracingPipelineProperties;
     VkPhysicalDeviceAccelerationStructurePropertiesKHR  deviceAccelerationStructureProperties;
+    VkPhysicalDeviceDescriptorHeapPropertiesEXT         deviceDescriptorHeapProperties;
     VkPhysicalDeviceVulkan12Features                    deviceVulkan12Features;
     VkPhysicalDeviceVulkan13Features                    deviceVulkan13Features;
     VkPhysicalDeviceVulkan14Features                    deviceVulkan14Features;

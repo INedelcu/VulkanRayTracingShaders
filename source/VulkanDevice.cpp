@@ -364,6 +364,9 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
         g_VkPhysicalDevices[i].deviceAccelerationStructureProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
         g_VkPhysicalDevices[i].deviceRayTracingPipelineProperties.pNext = (void*)&g_VkPhysicalDevices[i].deviceAccelerationStructureProperties;
 
+        g_VkPhysicalDevices[i].deviceDescriptorHeapProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_HEAP_PROPERTIES_EXT;
+        g_VkPhysicalDevices[i].deviceAccelerationStructureProperties.pNext = (void*)&g_VkPhysicalDevices[i].deviceDescriptorHeapProperties;
+
         g_VkPhysicalDevices[i].deviceRayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
 
         g_VkPhysicalDevices[i].deviceAccelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;

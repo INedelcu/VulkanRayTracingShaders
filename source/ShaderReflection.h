@@ -24,8 +24,8 @@ public:
     // Null when the module has no such resource (DXC removes the ones a module never uses).
     const ShaderResourceBinding* Find(const std::string& name) const;
 
-    const std::vector<ShaderResourceBinding>& Bindings() const { return m_bindings; }
+    const std::vector<ShaderResourceBinding>& Bindings() const { return m_Bindings; }
 
 private:
-    std::vector<ShaderResourceBinding> m_bindings; // sorted by set, then binding
+    std::vector<ShaderResourceBinding> m_Bindings; // sorted by set, then binding
 };

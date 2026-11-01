@@ -52,16 +52,16 @@ ShaderReflection::ShaderReflection(const std::vector<uint32_t>& spirv)
         auto set  = sets.find(id);
         auto name = names.find(id);
         if (set != sets.end() && name != names.end())
-            m_bindings.push_back({name->second, set->second, binding});
+            m_Bindings.push_back({name->second, set->second, binding});
     }
-    std::sort(m_bindings.begin(), m_bindings.end(), [](const ShaderResourceBinding& a, const ShaderResourceBinding& b) {
+    std::sort(m_Bindings.begin(), m_Bindings.end(), [](const ShaderResourceBinding& a, const ShaderResourceBinding& b) {
         return a.set != b.set ? a.set < b.set : a.binding < b.binding;
     });
 }
 
 const ShaderResourceBinding* ShaderReflection::Find(const std::string& name) const
 {
-    for (const ShaderResourceBinding& binding : m_bindings)
+    for (const ShaderResourceBinding& binding : m_Bindings)
         if (binding.name == name)
             return &binding;
     return nullptr;
