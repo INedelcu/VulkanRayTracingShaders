@@ -8,10 +8,10 @@
 #ifdef VK_KHR_acceleration_structure
 enum MeshId : uint8_t
 {
-	MeshQuad = 0,
-	MeshCube,
-	MeshSphere,
-	MeshTorus
+    MeshQuad = 0,
+    MeshCube,
+    MeshSphere,
+    MeshTorus
 };
 
 std::vector<Mesh>       g_Meshes;
@@ -79,38 +79,38 @@ static void CreateInstances()
     g_Instances.push_back(ground);
 
     Instance cube1;
-	cube1.mesh = MeshCube;
-	cube1.transform = Transform::Translation({ -3.2f, 1.0f, -0.6f }) * Transform::RotationY(Radians(25.0f));
+    cube1.mesh = MeshCube;
+    cube1.transform = Transform::Translation({ -3.2f, 1.0f, -0.6f }) * Transform::RotationY(Radians(25.0f));
     g_Instances.push_back(cube1);
 
     Instance cube2;
-	cube2.mesh = MeshCube;
-	cube2.transform = Transform::Translation({ -3.2f, 2.6f, -0.6f }) * Transform::RotationY(Radians(55.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
+    cube2.mesh = MeshCube;
+    cube2.transform = Transform::Translation({ -3.2f, 2.6f, -0.6f }) * Transform::RotationY(Radians(55.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
     g_Instances.push_back(cube2);
 
-	Instance cube3;
-	cube3.mesh = MeshCube;
-	cube3.transform = Transform::Translation({ 3.6f, 0.5f, -1.0f }) * Transform::RotationY(Radians(-30.0f)) * Transform::Scale({ 0.5f, 0.5f, 0.5f });
-	g_Instances.push_back(cube3);
+    Instance cube3;
+    cube3.mesh = MeshCube;
+    cube3.transform = Transform::Translation({ 3.6f, 0.5f, -1.0f }) * Transform::RotationY(Radians(-30.0f)) * Transform::Scale({ 0.5f, 0.5f, 0.5f });
+    g_Instances.push_back(cube3);
 
     Instance sphere1;
-	sphere1.mesh = MeshSphere;
-	sphere1.transform = Transform::Translation({ -1.2f, 0.75f, 2.6f }) * Transform::Scale({ 0.75f, 0.75f, 0.75f });
+    sphere1.mesh = MeshSphere;
+    sphere1.transform = Transform::Translation({ -1.2f, 0.75f, 2.6f }) * Transform::Scale({ 0.75f, 0.75f, 0.75f });
     g_Instances.push_back(sphere1);
 
     Instance sphere2;
-	sphere2.mesh = MeshSphere;
-	sphere2.transform = Transform::Translation({ 0.2f, 1.3f, -1.4f }) * Transform::Scale({ 1.3f, 1.3f, 1.3f });
+    sphere2.mesh = MeshSphere;
+    sphere2.transform = Transform::Translation({ 0.2f, 1.3f, -1.4f }) * Transform::Scale({ 1.3f, 1.3f, 1.3f });
     g_Instances.push_back(sphere2);
 
     Instance torus;
-	torus.mesh = MeshTorus;
-	torus.transform = Transform::Translation({ 2.6f, 0.32f, 1.6f }) * Transform::RotationY(Radians(20.0f));
+    torus.mesh = MeshTorus;
+    torus.transform = Transform::Translation({ 2.6f, 0.32f, 1.6f }) * Transform::RotationY(Radians(20.0f));
     g_Instances.push_back(torus);
 
     Instance quad;
-	quad.mesh = MeshQuad;
-	quad.transform = Transform::Translation({ 1.8f, 1.6f, -4.2f }) * Transform::RotationY(Radians(-15.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 1.6f, 1.0f, 1.6f });
+    quad.mesh = MeshQuad;
+    quad.transform = Transform::Translation({ 1.8f, 1.6f, -4.2f }) * Transform::RotationY(Radians(-15.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 1.6f, 1.0f, 1.6f });
     g_Instances.push_back(quad);
 }
 

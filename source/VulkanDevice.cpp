@@ -138,7 +138,7 @@ std::vector<const char*> kMandatoryDeviceExtensions =
 #endif
 
 #ifdef VK_EXT_descriptor_heap
-	VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME,
+    VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME,
 #endif
 
 #ifdef VK_KHR_deferred_host_operations
@@ -290,7 +290,7 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
         VK_MAKE_VERSION(1, 0, 0),
         "VulkanRayTracing",
         VK_MAKE_VERSION(1, 0, 0),
-		VK_API_VERSION_1_4
+        VK_API_VERSION_1_4
     };
 
     VkInstanceCreateInfo instanceCreateInfo =
@@ -418,11 +418,11 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
         const PhysicalGfxDeviceInfo& physicalDevice = g_VkPhysicalDevices[i];
         const VkPhysicalDeviceRayTracingPipelineFeaturesKHR& rayTracingPipelineFeatures = physicalDevice.deviceRayTracingPipelineFeatures;
 
-		if (physicalDevice.deviceProperties.properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-			continue;
+        if (physicalDevice.deviceProperties.properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+            continue;
 
-		if (physicalDevice.deviceProperties.properties.apiVersion < VK_API_VERSION_1_4)
-			continue;
+        if (physicalDevice.deviceProperties.properties.apiVersion < VK_API_VERSION_1_4)
+            continue;
 
         if (rayTracingPipelineFeatures.rayTracingPipeline == VK_FALSE)
             continue;
@@ -456,12 +456,12 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
     const PhysicalGfxDeviceInfo& physicalDevice = g_VkPhysicalDevices[selectedPhysicalDevice];
 
     if (!physicalDevice.deviceDescriptorHeapFeatures.descriptorHeap ||
-		!physicalDevice.deviceRayTracingPipelineFeatures.rayTracingPipeline ||
-		!physicalDevice.deviceAccelerationStructureFeatures.accelerationStructure ||
+        !physicalDevice.deviceRayTracingPipelineFeatures.rayTracingPipeline ||
+        !physicalDevice.deviceAccelerationStructureFeatures.accelerationStructure ||
         !physicalDevice.deviceVulkan12Features.bufferDeviceAddress ||
-		!physicalDevice.deviceVulkan12Features.scalarBlockLayout ||
-		!physicalDevice.deviceVulkan13Features.synchronization2 ||
-		!physicalDevice.deviceVulkan14Features.maintenance5)
+        !physicalDevice.deviceVulkan12Features.scalarBlockLayout ||
+        !physicalDevice.deviceVulkan13Features.synchronization2 ||
+        !physicalDevice.deviceVulkan14Features.maintenance5)
     {
         MessageBox(hWnd, "The selected GPU is missing a required feature. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
@@ -506,19 +506,19 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeature = {};
     accelStructFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
     accelStructFeature.accelerationStructure = true;
-	accelStructFeature.accelerationStructureCaptureReplay = physicalDevice.deviceAccelerationStructureFeatures.accelerationStructureCaptureReplay;
+    accelStructFeature.accelerationStructureCaptureReplay = physicalDevice.deviceAccelerationStructureFeatures.accelerationStructureCaptureReplay;
 
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeature = {};
     rayTracingPipelineFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
     rayTracingPipelineFeature.pNext = (void*)&accelStructFeature;
     rayTracingPipelineFeature.rayTracingPipeline = true;
-	rayTracingPipelineFeature.rayTracingPipelineShaderGroupHandleCaptureReplay = physicalDevice.deviceRayTracingPipelineFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay;
+    rayTracingPipelineFeature.rayTracingPipelineShaderGroupHandleCaptureReplay = physicalDevice.deviceRayTracingPipelineFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay;
 
     VkPhysicalDeviceDescriptorHeapFeaturesEXT descriptorHeapFeature = {};
     descriptorHeapFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_HEAP_FEATURES_EXT;
     descriptorHeapFeature.pNext = (void*)&rayTracingPipelineFeature;
     descriptorHeapFeature.descriptorHeap = true;
-	descriptorHeapFeature.descriptorHeapCaptureReplay = physicalDevice.deviceDescriptorHeapFeatures.descriptorHeapCaptureReplay;
+    descriptorHeapFeature.descriptorHeapCaptureReplay = physicalDevice.deviceDescriptorHeapFeatures.descriptorHeapCaptureReplay;
 
     VkPhysicalDeviceVulkan14Features vulkan14Features = {};
     vulkan14Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES;

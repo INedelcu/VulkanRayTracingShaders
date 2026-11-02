@@ -1,18 +1,25 @@
 #include "Renderer.h"
-#include "VulkanDevice.h"
-#include "RayTracingScene.h"
-#include "Shaders.h"
-#include "ShaderReflection.h"
-#include "VulkanImages.h"
-#include "DescriptorHeap.h"
 
-size_t		g_CurrentFrame = 0;
+#include "DescriptorHeap.h"
+#include "RayTracingPipeline.h"
+#include "RayTracingScene.h"
+#include "ShaderReflection.h"
+#include "Shaders.h"
+#include "VulkanDevice.h"
+#include "VulkanImages.h"
+
+struct PushData
+{
+    VkDeviceAddress accelStruct;
+};
+
+size_t      g_CurrentFrame = 0;
 uint32_t    g_FrameIndex = 0;
 
-VkShaderModule g_RayGenShader = VK_NULL_HANDLE;
-DescriptorHeap g_ResourceHeap;
-Image          g_OutputImage;
-uint32_t       g_OutputImageSlot = UINT32_MAX;
+DescriptorHeap     g_ResourceHeap;
+Image              g_OutputImage;
+uint32_t           g_OutputImageSlot = UINT32_MAX;
+RayTracingPipeline g_RayTracingPipeline;
 
 bool           g_RendererReady = false;
 bool           g_WindowResized = false;
@@ -28,7 +35,7 @@ static bool UpdateOutputImage()
         DestroyImage(g_OutputImage);
     }
 
-    g_OutputImage = CreateImage(g_VkSwapChainExtent, VK_FORMAT_R32G32B32A32_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "Output");
+    g_OutputImage = CreateImage(g_VkSwapChainExtent, VK_FORMAT_R32G32B32A32_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "Output");
 
     if (g_OutputImage.image == VK_NULL_HANDLE)
         return false;
@@ -66,11 +73,12 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
     }
 
     const std::vector<uint32_t> rayGenSpirv = LoadSpirv("RayGen");
+    VkShaderModule rayGenShader = VK_NULL_HANDLE;
 
     if (!rayGenSpirv.empty())
-        g_RayGenShader = CreateShaderModule(rayGenSpirv, "RayGen");
+        rayGenShader = CreateShaderModule(rayGenSpirv, "RayGen");
 
-    if (g_RayGenShader == VK_NULL_HANDLE)
+    if (rayGenShader == VK_NULL_HANDLE)
     {
         MessageBox(hWnd, "Couldn't load shaders\\RayGen.spv. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
@@ -83,6 +91,27 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         char message[256];
         _snprintf_s(message, _TRUNCATE, "RayGen.spv: %s = set %u, binding %u\n", binding.name.c_str(), binding.set, binding.binding);
         OutputDebugString(message);
+    }
+
+    std::vector<VkDescriptorSetAndBindingMappingEXT> mappings;
+
+    // Use vkCmdPushDataEXT to bind the TLAS to shader. Buffers and TLASes can write their addresses into push data for shader binding.
+    if (const ShaderResourceBinding* accelStruct = rayGenReflection.Find("AccelStruct"))
+        mappings.push_back(PushAddressMapping(accelStruct->set, accelStruct->binding, VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT, offsetof(PushData, accelStruct)));
+
+    // Write the output image descriptor into the descriptor heap and use its byte offset to specify where the descriptor is in the descriptor heap.
+    // Images can't be bound using push data.
+    if (const ShaderResourceBinding* output = rayGenReflection.Find("Output"))
+        mappings.push_back(HeapConstantOffsetMapping(output->set, output->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_OutputImageSlot)));
+
+    const bool pipelineCreated = CreateRayTracingPipeline(g_RayTracingPipeline, rayGenShader, mappings);
+
+    vkDestroyShaderModule(g_VkDevice, rayGenShader, nullptr);
+
+    if (!pipelineCreated)
+    {
+        MessageBox(hWnd, "Couldn't create the ray tracing pipeline. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
     }
 
     g_RendererReady = true;
@@ -105,12 +134,7 @@ void ShutdownRenderer()
         vkDeviceWaitIdle(g_VkDevice);
     }
 
-    if (g_RayGenShader != VK_NULL_HANDLE)
-    {
-        vkDestroyShaderModule(g_VkDevice, g_RayGenShader, nullptr);
-        g_RayGenShader = VK_NULL_HANDLE;
-    }
-
+    DestroyRayTracingPipeline(g_RayTracingPipeline);
     DestroyImage(g_OutputImage);
     g_ResourceHeap.Destroy();
 
@@ -172,26 +196,26 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
     BuildTLAS(cmdBuffer, g_CurrentFrame);
 #endif
 
-	TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
-    VkClearColorValue clearColor;
-    clearColor.float32[0] = 0.85f;
-    clearColor.float32[1] = 0.05f;
-    clearColor.float32[2] = 0.2f;
-    clearColor.float32[3] = 1.0f;
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, g_RayTracingPipeline.pipeline);
 
-    VkImageSubresourceRange range;
-    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    range.baseArrayLayer = 0;
-    range.baseMipLevel = 0;
-    range.levelCount = 1;
-    range.layerCount = 1;
+    const PushData pushData = { g_Tlas.address };
 
-    vkCmdClearColorImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1, &range);
+    VkPushDataInfoEXT pushInfo = {};
+    pushInfo.sType = VK_STRUCTURE_TYPE_PUSH_DATA_INFO_EXT;
+    pushInfo.offset = 0;
+    pushInfo.data.address = &pushData;
+    pushInfo.data.size = sizeof(pushData);
 
-    TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+    vkCmdPushDataEXT(cmdBuffer, &pushInfo);
+
+    vkCmdTraceRaysKHR(cmdBuffer, &g_RayTracingPipeline.raygenRegion, &g_RayTracingPipeline.missRegion, &g_RayTracingPipeline.hitRegion, &g_RayTracingPipeline.callableRegion,
+                      g_OutputImage.extent.width, g_OutputImage.extent.height, 1);
+
+    TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
 }
 
 static void EndFrame(VkCommandBuffer cmdBuffer, uint32_t imageIndex)
@@ -231,7 +255,6 @@ static void EndFrame(VkCommandBuffer cmdBuffer, uint32_t imageIndex)
 
     vkQueueSubmit(g_VkQueue, 1, &submitInfo, g_VkFrameFence[g_CurrentFrame]);
 
-    // Present
     VkPresentInfoKHR presentInfo = {};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.pNext = nullptr;

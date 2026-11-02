@@ -26,6 +26,8 @@ struct Instance
     Transform transform;
 };
 
+extern AccelerationStructure g_Tlas;
+
 void CreateRayTracingScene();
 void DestroyRayTracingScene();
 

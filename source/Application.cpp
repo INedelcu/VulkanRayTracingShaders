@@ -46,7 +46,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     RECT rc;
     SetRect(&rc, 0, 0, 1920, 1080);
 
-	DWORD windowStyle = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+    DWORD windowStyle = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
     AdjustWindowRect(&rc, windowStyle, FALSE);
 
     HWND hWnd = CreateWindow(
