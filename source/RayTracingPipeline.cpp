@@ -26,6 +26,14 @@ VkDescriptorSetAndBindingMappingEXT HeapConstantOffsetMapping(uint32_t set, uint
     return mapping;
 }
 
+VkDescriptorSetAndBindingMappingEXT PushDataMapping(uint32_t set, uint32_t binding, uint32_t pushOffset)
+{
+    VkDescriptorSetAndBindingMappingEXT mapping = MakeMapping(set, binding, VK_SPIRV_RESOURCE_TYPE_UNIFORM_BUFFER_BIT_EXT, VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT);
+    mapping.sourceData.pushDataOffset = pushOffset;
+
+    return mapping;
+}
+
 VkDescriptorSetAndBindingMappingEXT PushAddressMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, uint32_t pushOffset)
 {
     VkDescriptorSetAndBindingMappingEXT mapping = MakeMapping(set, binding, resourceMask, VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT);

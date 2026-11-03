@@ -15,6 +15,7 @@ struct RayTracingPipeline
 };
 
 VkDescriptorSetAndBindingMappingEXT HeapConstantOffsetMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, VkDeviceSize heapOffset);
+VkDescriptorSetAndBindingMappingEXT PushDataMapping(uint32_t set, uint32_t binding, uint32_t pushOffset);
 VkDescriptorSetAndBindingMappingEXT PushAddressMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, uint32_t pushOffset);
 
 bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, VkShaderModule shaderModule, const std::vector<VkDescriptorSetAndBindingMappingEXT>& mappings);

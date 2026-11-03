@@ -1,5 +1,6 @@
 #include "Renderer.h"
 
+#include "Camera.h"
 #include "DescriptorHeap.h"
 #include "RayTracingPipeline.h"
 #include "RayTracingScene.h"
@@ -8,10 +9,16 @@
 #include "VulkanDevice.h"
 #include "VulkanImages.h"
 
+#include <algorithm>
+#include <cmath>
+
 struct PushData
 {
-    VkDeviceAddress accelStruct;
+    shared::FrameConstants frame;
+    VkDeviceAddress        accelStruct;
 };
+
+static_assert(offsetof(PushData, accelStruct) % 8 == 0, "push addresses must be 8-byte aligned");
 
 size_t      g_CurrentFrame = 0;
 uint32_t    g_FrameIndex = 0;
@@ -20,6 +27,7 @@ DescriptorHeap     g_ResourceHeap;
 Image              g_OutputImage;
 uint32_t           g_OutputImageSlot = UINT32_MAX;
 RayTracingPipeline g_RayTracingPipeline;
+OrbitCamera        g_Camera;
 
 bool           g_RendererReady = false;
 bool           g_WindowResized = false;
@@ -93,7 +101,17 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         OutputDebugString(message);
     }
 
+    if (sizeof(PushData) > g_VkPhysicalDevices[g_CurrentPhysicalDevice].deviceDescriptorHeapProperties.maxPushDataSize)
+    {
+        vkDestroyShaderModule(g_VkDevice, rayGenShader, nullptr);
+        MessageBox(hWnd, "The push data is larger than this GPU supports. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
+    }
+
     std::vector<VkDescriptorSetAndBindingMappingEXT> mappings;
+
+    if (const ShaderResourceBinding* frame = rayGenReflection.Find("Frame"))
+        mappings.push_back(PushDataMapping(frame->set, frame->binding, offsetof(PushData, frame)));
 
     // Use vkCmdPushDataEXT to bind the TLAS to shader. Buffers and TLASes can write their addresses into push data for shader binding.
     if (const ShaderResourceBinding* accelStruct = rayGenReflection.Find("AccelStruct"))
@@ -123,6 +141,17 @@ void OnWindowResized(uint32_t width, uint32_t height)
 {
     if (g_RendererReady && (width != g_VkSwapChainExtent.width || height != g_VkSwapChainExtent.height))
         g_WindowResized = true;
+}
+
+void OnMouseDrag(float deltaX, float deltaY)
+{
+    g_Camera.yaw -= deltaX * 0.006f;
+    g_Camera.pitch = std::clamp(g_Camera.pitch + deltaY * 0.006f, Radians(2.0f), Radians(85.0f));
+}
+
+void OnMouseWheel(float steps)
+{
+    g_Camera.distance = std::clamp(g_Camera.distance * std::pow(0.9f, steps), 3.0f, 40.0f);
 }
 
 void ShutdownRenderer()
@@ -201,7 +230,7 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
 
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, g_RayTracingPipeline.pipeline);
 
-    const PushData pushData = { g_Tlas.address };
+    const PushData pushData = { g_Camera.MakeFrameConstants(g_OutputImage.extent.width, g_OutputImage.extent.height), g_Tlas.address };
 
     VkPushDataInfoEXT pushInfo = {};
     pushInfo.sType = VK_STRUCTURE_TYPE_PUSH_DATA_INFO_EXT;

@@ -19,6 +19,14 @@ struct Vertex
     float2 uv;
 };
 
+struct FrameConstants
+{
+    float4 cameraPosition; // xyz: eye position, w: tan(verticalFov / 2)
+    float4 cameraRight;    // xyz: right axis, w: aspect ratio (width / height)
+    float4 cameraUp;       // xyz: up axis
+    float4 cameraForward;  // xyz: forward axis
+};
+
 #ifdef __cplusplus
 } // namespace shared
 #endif
