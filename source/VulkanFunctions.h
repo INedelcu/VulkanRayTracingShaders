@@ -149,6 +149,11 @@
     macro(vkDestroyShaderModule) \
     macro(vkCmdBindPipeline) \
     macro(vkDestroyPipeline) \
+    macro(vkCreateQueryPool) \
+    macro(vkDestroyQueryPool) \
+    macro(vkCmdResetQueryPool) \
+    macro(vkCmdWriteTimestamp2) \
+    macro(vkGetQueryPoolResults) \
     VULKAN_EXTENSION_LIST(VK_KHR_acceleration_structure, macro) \
     VULKAN_EXTENSION_LIST(VK_KHR_ray_tracing_pipeline, macro) \
     VULKAN_EXTENSION_LIST(VK_EXT_descriptor_heap, macro) \

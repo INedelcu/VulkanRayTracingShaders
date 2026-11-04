@@ -39,6 +39,7 @@ extern uint32_t                             g_MaxFramesInFlight;
 extern std::vector<PhysicalGfxDeviceInfo>   g_VkPhysicalDevices;
 extern size_t                               g_CurrentPhysicalDevice;
 extern VkDevice                             g_VkDevice;
+extern uint32_t                             g_VkQueueFamilyIndex;
 extern VkQueue                              g_VkQueue;
 extern std::vector<VkSemaphore>             g_VkImageAvailableSemaphore;
 extern std::vector<VkSemaphore>             g_VkRenderingFinishedSemaphore;

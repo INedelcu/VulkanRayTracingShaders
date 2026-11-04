@@ -2,6 +2,7 @@
 
 #include "Camera.h"
 #include "DescriptorHeap.h"
+#include "GpuTimer.h"
 #include "RayTracingPipeline.h"
 #include "RayTracingScene.h"
 #include "ShaderReflection.h"
@@ -28,16 +29,42 @@ Image              g_OutputImage;
 uint32_t           g_OutputImageSlot = UINT32_MAX;
 RayTracingPipeline g_RayTracingPipeline;
 OrbitCamera        g_Camera;
+GpuTimer           g_TraceTimer;
 
 bool           g_RendererReady = false;
 bool           g_WindowResized = false;
 uint64_t       g_PresentId = 0;
+
+HWND           g_Window = nullptr;
+char           g_WindowTitle[128] = {};
+double         g_TraceTimeSum = 0.0;
+uint32_t       g_TraceTimeCount = 0;
+ULONGLONG      g_TraceTimeReportTick = 0;
 
 static bool RecreateSwapChainAndResetPresentId()
 {
     g_PresentId = 0;
 
     return RecreateSwapChain();
+}
+
+static void ReportTraceTime(double milliseconds)
+{
+    g_TraceTimeSum += milliseconds;
+    g_TraceTimeCount++;
+
+    const ULONGLONG now = GetTickCount64();
+
+    if (now - g_TraceTimeReportTick < 500)
+        return;
+
+    char title[256];
+    _snprintf_s(title, _TRUNCATE, "%s - vkCmdTraceRaysKHR: %.3f ms", g_WindowTitle, g_TraceTimeSum / g_TraceTimeCount);
+    SetWindowText(g_Window, title);
+
+    g_TraceTimeSum = 0.0;
+    g_TraceTimeCount = 0;
+    g_TraceTimeReportTick = now;
 }
 
 static bool UpdateOutputImage()
@@ -67,6 +94,9 @@ static bool UpdateOutputImage()
 
 bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 {
+    g_Window = hWnd;
+    GetWindowText(hWnd, g_WindowTitle, sizeof(g_WindowTitle));
+
     if (!InitializeVulkan(hInstance, hWnd))
         return false;
 
@@ -160,6 +190,8 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         return false;
     }
 
+    g_TraceTimer.Create(g_MaxFramesInFlight, "Trace timer");
+
     g_RendererReady = true;
 
     return true;
@@ -191,6 +223,7 @@ void ShutdownRenderer()
         vkDeviceWaitIdle(g_VkDevice);
     }
 
+    g_TraceTimer.Destroy();
     DestroyRayTracingPipeline(g_RayTracingPipeline);
     DestroyImage(g_OutputImage);
     g_ResourceHeap.Destroy();
@@ -211,6 +244,11 @@ static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
         vkWaitForPresentKHR(g_VkDevice, g_VkSwapChain, g_PresentId - 1, 100000000);
 
     vkWaitForFences(g_VkDevice, 1, &g_VkFrameFence[g_CurrentFrame], VK_TRUE, (uint64_t)-1);
+
+    double traceMilliseconds = 0.0;
+
+    if (g_TraceTimer.Read((uint32_t)g_CurrentFrame, traceMilliseconds))
+        ReportTraceTime(traceMilliseconds);
 
     if (g_WindowResized)
     {
@@ -271,8 +309,12 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
 
     vkCmdPushDataEXT(cmdBuffer, &pushInfo);
 
+    g_TraceTimer.Begin(cmdBuffer, (uint32_t)g_CurrentFrame);
+
     vkCmdTraceRaysKHR(cmdBuffer, &g_RayTracingPipeline.raygenRegion, &g_RayTracingPipeline.missRegion, &g_RayTracingPipeline.hitRegion, &g_RayTracingPipeline.callableRegion,
                       g_OutputImage.extent.width, g_OutputImage.extent.height, 1);
+
+    g_TraceTimer.End(cmdBuffer, (uint32_t)g_CurrentFrame);
 
     TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                     VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
