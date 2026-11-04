@@ -1,6 +1,7 @@
 #include "RayTracingScene.h"
 #include "Geometry.h"
 
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <vector>
@@ -61,11 +62,16 @@ static void CreateMeshes()
 
     for (size_t i = 0; i < std::size(meshData); i++)
     {
+        char vertexBufferName[64];
+        char indexBufferName[64];
+        _snprintf_s(vertexBufferName, _TRUNCATE, "%s vertices", meshNames[i]);
+        _snprintf_s(indexBufferName, _TRUNCATE, "%s indices", meshNames[i]);
+
         Mesh mesh;
         mesh.vertexCount = (uint32_t)meshData[i].vertices.size();
         mesh.indexCount = (uint32_t)meshData[i].indices.size();
-        mesh.vertexBuffer = CreateBufferWithData(meshData[i].vertices.data(), mesh.vertexCount * sizeof(shared::Vertex), geometryUsage, meshNames[i]);
-        mesh.indexBuffer = CreateBufferWithData(meshData[i].indices.data(), mesh.indexCount * sizeof(uint32_t), geometryUsage, meshNames[i]);
+        mesh.vertexBuffer = CreateBufferWithData(meshData[i].vertices.data(), mesh.vertexCount * sizeof(shared::Vertex), geometryUsage, vertexBufferName);
+        mesh.indexBuffer = CreateBufferWithData(meshData[i].indices.data(), mesh.indexCount * sizeof(uint32_t), geometryUsage, indexBufferName);
 
         g_Meshes.push_back(mesh);
     }
@@ -260,7 +266,7 @@ void BuildTLAS(VkCommandBuffer commandBuffer, size_t frame)
         VkAccelerationStructureInstanceKHR instance = {};
         memcpy(instance.transform.matrix, source.transform.m, sizeof(instance.transform.matrix));
         instance.instanceCustomIndex = i;
-        instance.instanceShaderBindingTableRecordOffset = i;
+        instance.instanceShaderBindingTableRecordOffset = i * shared::RAY_TYPE_COUNT;
         instance.mask = 0xFF;
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         instance.accelerationStructureReference = g_Meshes[source.mesh].blas.address;

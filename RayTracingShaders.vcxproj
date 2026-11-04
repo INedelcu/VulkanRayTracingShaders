@@ -128,11 +128,13 @@
     <DxcPath>$(VULKAN_SDK)\Bin\dxc.exe</DxcPath>
     <ShaderOutDir>$(OutDir)shaders\</ShaderOutDir>
     <ShaderIncludes>$(MSBuildProjectDirectory)\source\SharedTypes.h;$([System.String]::Join(';', $([System.IO.Directory]::GetFiles('$(MSBuildProjectDirectory)\shaders', '*.hlsli'))))</ShaderIncludes>
+    <!-- Embeds the HLSL source in the SPIR-V (NonSemantic.Shader.DebugInfo.100) so Nsight and RenderDoc can show it. -->
+    <DxcDebugFlags Condition="'$(Configuration)' == 'Debug'">-Zi -Od -fspv-debug=vulkan-with-source -fspv-extension=SPV_KHR_non_semantic_info</DxcDebugFlags>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <CustomBuild>
       <Message>Compiling %(Identity) to %(Filename).spv</Message>
-      <Command>"$(DxcPath)" -T lib_6_3 -spirv -fspv-target-env=vulkan1.2 -fspv-extension=SPV_KHR_ray_tracing -fvk-use-scalar-layout -auto-binding-space 0 -HV 2021 -I "$(MSBuildProjectDirectory)\shaders" -I "$(MSBuildProjectDirectory)\source" -Fo "$(ShaderOutDir)%(Filename).spv" "%(FullPath)"</Command>
+      <Command>"$(DxcPath)" -T lib_6_3 -spirv -fspv-target-env=vulkan1.2 -fspv-extension=SPV_KHR_ray_tracing -fvk-use-scalar-layout -auto-binding-space 0 -HV 2021 $(DxcDebugFlags) -I "$(MSBuildProjectDirectory)\shaders" -I "$(MSBuildProjectDirectory)\source" -Fo "$(ShaderOutDir)%(Filename).spv" "%(FullPath)"</Command>
       <Outputs>$(ShaderOutDir)%(Filename).spv</Outputs>
       <AdditionalInputs>$(ShaderIncludes)</AdditionalInputs>
       <BuildInParallel>true</BuildInParallel>

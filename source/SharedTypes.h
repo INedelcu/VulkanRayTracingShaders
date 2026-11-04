@@ -12,6 +12,11 @@ struct float3 { float x, y, z; };
 struct float4 { float x, y, z, w; };
 #endif
 
+// Each instance owns RAY_TYPE_COUNT consecutive hit records in the SBT, and there is one miss record per ray type.
+static const uint RAY_TYPE_RADIANCE = 0;
+static const uint RAY_TYPE_SHADOW   = 1;
+static const uint RAY_TYPE_COUNT    = 2;
+
 struct Vertex
 {
     float3 position;
