@@ -130,6 +130,15 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
     if (const ShaderResourceBinding* output = rayGenReflection.Find("Output"))
         mappings.push_back(HeapConstantOffsetMapping(output->set, output->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_OutputImageSlot)));
 
+    // Also use VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT because of https://github.com/microsoft/DirectXShaderCompiler/issues/8492
+    const VkSpirvResourceTypeFlagsEXT storageBufferMask = VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT | VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT;
+
+    if (const ShaderResourceBinding* vertices = rayGenReflection.Find("Vertices"))
+        mappings.push_back(ShaderRecordAddressMapping(vertices->set, vertices->binding, storageBufferMask, offsetof(MeshRecord, vertices)));
+
+    if (const ShaderResourceBinding* indices = rayGenReflection.Find("Indices"))
+        mappings.push_back(ShaderRecordAddressMapping(indices->set, indices->binding, storageBufferMask, offsetof(MeshRecord, indices)));
+
     const bool pipelineCreated = CreateRayTracingPipeline(g_RayTracingPipeline, rayGenShader, mappings);
 
     vkDestroyShaderModule(g_VkDevice, rayGenShader, nullptr);
@@ -137,6 +146,17 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
     if (!pipelineCreated)
     {
         MessageBox(hWnd, "Couldn't create the ray tracing pipeline. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
+    }
+
+    std::vector<MeshRecord> hitRecords;
+
+    for (const Instance& instance : g_Instances)
+        hitRecords.push_back({ g_Meshes[instance.mesh].vertexBuffer.address, g_Meshes[instance.mesh].indexBuffer.address });
+
+    if (!CreateShaderBindingTable(g_RayTracingPipeline, hitRecords))
+    {
+        MessageBox(hWnd, "Couldn't create the shader binding table. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
     }
 

@@ -34,6 +34,14 @@ VkDescriptorSetAndBindingMappingEXT PushDataMapping(uint32_t set, uint32_t bindi
     return mapping;
 }
 
+VkDescriptorSetAndBindingMappingEXT ShaderRecordAddressMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, uint32_t recordOffset)
+{
+    VkDescriptorSetAndBindingMappingEXT mapping = MakeMapping(set, binding, resourceMask, VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_ADDRESS_EXT);
+    mapping.sourceData.shaderRecordAddressOffset = recordOffset;
+
+    return mapping;
+}
+
 VkDescriptorSetAndBindingMappingEXT PushAddressMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, uint32_t pushOffset)
 {
     VkDescriptorSetAndBindingMappingEXT mapping = MakeMapping(set, binding, resourceMask, VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_ADDRESS_EXT);
@@ -68,7 +76,7 @@ static VkRayTracingShaderGroupCreateInfoKHR TrianglesGroup(uint32_t closestHitSt
     return group;
 }
 
-static bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline)
+bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<MeshRecord>& hitRecords)
 {
     const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& rtpp = g_VkPhysicalDevices[g_CurrentPhysicalDevice].deviceRayTracingPipelineProperties;
 
@@ -78,15 +86,19 @@ static bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline)
     if (vkGetRayTracingShaderGroupHandlesKHR(g_VkDevice, rtPipeline.pipeline, 0, GroupCount, handles.size(), handles.data()) != VK_SUCCESS)
         return false;
 
-    // Currently, we are not binding any resources or data through the shader records, just setting shader handles.
+    // The raygen and miss records hold only shader handles. Each hit record holds the hit group handle followed by a MeshRecord with the instance's vertex and index buffer addresses.
 
     const VkDeviceSize raygenStride = AlignUp(handleSize, rtpp.shaderGroupBaseAlignment);
-    const VkDeviceSize recordStride = AlignUp(handleSize, rtpp.shaderGroupHandleAlignment);
+    const VkDeviceSize missStride = AlignUp(handleSize, rtpp.shaderGroupHandleAlignment);
+    const VkDeviceSize hitStride = AlignUp(handleSize + sizeof(MeshRecord), rtpp.shaderGroupHandleAlignment);
+
+    if (hitRecords.empty() || hitStride > rtpp.maxShaderGroupStride)
+        return false;
 
     const VkDeviceSize raygenOffset = 0;
     const VkDeviceSize missOffset = AlignUp(raygenOffset + raygenStride, rtpp.shaderGroupBaseAlignment);
-    const VkDeviceSize hitOffset = AlignUp(missOffset + recordStride, rtpp.shaderGroupBaseAlignment);
-    const VkDeviceSize tableSize = hitOffset + recordStride;
+    const VkDeviceSize hitOffset = AlignUp(missOffset + missStride, rtpp.shaderGroupBaseAlignment);
+    const VkDeviceSize tableSize = hitOffset + hitStride * hitRecords.size();
 
     rtPipeline.sbtBuffer = CreateBuffer(tableSize + rtpp.shaderGroupBaseAlignment,
         VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -100,11 +112,17 @@ static bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline)
 
     memcpy(table + raygenOffset, handles.data() + GroupRayGen * handleSize, handleSize);
     memcpy(table + missOffset, handles.data() + GroupMiss * handleSize, handleSize);
-    memcpy(table + hitOffset, handles.data() + GroupHit * handleSize, handleSize);
+
+    for (size_t i = 0; i < hitRecords.size(); i++)
+    {
+        uint8_t* record = table + hitOffset + i * hitStride;
+        memcpy(record, handles.data() + GroupHit * handleSize, handleSize);
+        memcpy(record + handleSize, &hitRecords[i], sizeof(MeshRecord));
+    }
 
     rtPipeline.raygenRegion = { tableAddress + raygenOffset, raygenStride, raygenStride };
-    rtPipeline.missRegion = { tableAddress + missOffset, recordStride, recordStride };
-    rtPipeline.hitRegion = { tableAddress + hitOffset, recordStride, recordStride };
+    rtPipeline.missRegion = { tableAddress + missOffset, missStride, missStride };
+    rtPipeline.hitRegion = { tableAddress + hitOffset, hitStride, hitStride * hitRecords.size() };
     rtPipeline.callableRegion = {};
 
     return true;
@@ -156,13 +174,7 @@ bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, VkShaderModule sha
         return false;
     }
 
-    SetVkObjectName((uint64_t)rtPipeline.pipeline, VK_OBJECT_TYPE_PIPELINE, "Ray tracing pipeline");
-
-    if (!CreateShaderBindingTable(rtPipeline))
-    {
-        DestroyRayTracingPipeline(rtPipeline);
-        return false;
-    }
+    SetVkObjectName((uint64_t)rtPipeline.pipeline, VK_OBJECT_TYPE_PIPELINE, "Ray Tracing Pipeline");
 
     return true;
 }

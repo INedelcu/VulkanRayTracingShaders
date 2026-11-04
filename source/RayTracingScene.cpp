@@ -260,6 +260,7 @@ void BuildTLAS(VkCommandBuffer commandBuffer, size_t frame)
         VkAccelerationStructureInstanceKHR instance = {};
         memcpy(instance.transform.matrix, source.transform.m, sizeof(instance.transform.matrix));
         instance.instanceCustomIndex = i;
+        instance.instanceShaderBindingTableRecordOffset = i;
         instance.mask = 0xFF;
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         instance.accelerationStructureReference = g_Meshes[source.mesh].blas.address;

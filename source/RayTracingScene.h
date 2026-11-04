@@ -3,6 +3,8 @@
 #include "VulkanBuffers.h"
 #include "MathUtils.h"
 
+#include <vector>
+
 #ifdef VK_KHR_acceleration_structure
 struct AccelerationStructure
 {
@@ -26,6 +28,8 @@ struct Instance
     Transform transform;
 };
 
+extern std::vector<Mesh>     g_Meshes;
+extern std::vector<Instance> g_Instances;
 extern AccelerationStructure g_Tlas;
 
 void CreateRayTracingScene();

@@ -1,4 +1,5 @@
 #include "SharedTypes.h"
+#include "TriangleMesh.hlsli"
 
 RaytracingAccelerationStructure AccelStruct : register(t0, space1);
 RWTexture2D<float4> Output : register(u1, space1);
@@ -11,6 +12,10 @@ struct Payload
 {
     float3 color;
 };
+
+static const float3 kSunDirection = float3(-0.45f, 0.75f, 0.42f);
+static const float3 kAlbedo       = float3(0.95f, 0.95f, 0.95f);
+static const float3 kAmbient      = float3(0.1f, 0.18f, 0.25f);
 
 [shader("raygeneration")]
 void RayGen()
@@ -44,5 +49,12 @@ void Miss(inout Payload payload)
 [shader("closesthit")]
 void ClosestHit(inout Payload payload, in BuiltInTriangleIntersectionAttributes attributes)
 {
-    payload.color = float3(1.0f - attributes.barycentrics.x - attributes.barycentrics.y, attributes.barycentrics);
+    SurfaceHit hit = FetchSurface(attributes);
+
+    float diffuse = saturate(dot(hit.shadingNormal, normalize(kSunDirection)));
+
+    // Blend from 100% ambient color (unlit side) up to full light (facing the sun).
+    float3 lighting = lerp(kAmbient, float3(1.0f, 1.0f, 1.0f), diffuse);
+
+    payload.color = kAlbedo * lighting;
 }
