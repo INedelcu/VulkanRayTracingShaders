@@ -148,8 +148,21 @@ std::vector<const char*> kMandatoryDeviceExtensions =
 #endif
 };
 
+static VkSurfaceFormatKHR ChooseSurfaceFormat()
+{
+    for (const VkSurfaceFormatKHR& surfaceFormat : g_VkPhysicalDevices[g_CurrentPhysicalDevice].deviceSurfaceFormats)
+    {
+        if ((surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB || surfaceFormat.format == VK_FORMAT_R8G8B8A8_SRGB) && surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            return surfaceFormat;
+    }
+
+    return { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+}
+
 bool CreateSwapChain()
 {
+    const VkSurfaceFormatKHR surfaceFormat = ChooseSurfaceFormat();
+
     VkSurfaceCapabilitiesKHR surfProperties;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_VkPhysicalDevices[g_CurrentPhysicalDevice].device, g_VkPresentationSurface, &surfProperties);
 
@@ -163,8 +176,8 @@ bool CreateSwapChain()
     createInfo.surface = g_VkPresentationSurface;
     createInfo.flags = 0;
     createInfo.minImageCount = g_SwapChainMinImageCount;
-    createInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-    createInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    createInfo.imageFormat = surfaceFormat.format;
+    createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = surfProperties.currentExtent;
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;

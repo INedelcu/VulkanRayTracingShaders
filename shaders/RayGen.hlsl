@@ -4,6 +4,9 @@ RaytracingAccelerationStructure AccelStruct : register(t0, space1);
 RWTexture2D<float4> Output : register(u1, space1);
 ConstantBuffer<FrameConstants> Frame : register(b0, space1);
 
+static const float3 kSkyHorizon = float3(0.60f, 0.75f, 0.90f);
+static const float3 kSkyZenith = float3(0.07, 0.21, 0.69);
+
 struct Payload
 {
     float3 color;
@@ -33,9 +36,9 @@ void RayGen()
 [shader("miss")]
 void Miss(inout Payload payload)
 {
-    float t = saturate(WorldRayDirection().y * 0.5f + 0.5f);
+    float t = smoothstep(0.0f, 0.5f, WorldRayDirection().y);
 
-    payload.color = lerp(float3(0.85f, 0.88f, 0.92f), float3(0.3f, 0.5f, 0.85f), t);
+    payload.color = lerp(kSkyHorizon, kSkyZenith, t);
 }
 
 [shader("closesthit")]
