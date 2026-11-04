@@ -31,6 +31,14 @@ OrbitCamera        g_Camera;
 
 bool           g_RendererReady = false;
 bool           g_WindowResized = false;
+uint64_t       g_PresentId = 0;
+
+static bool RecreateSwapChainAndResetPresentId()
+{
+    g_PresentId = 0;
+
+    return RecreateSwapChain();
+}
 
 static bool UpdateOutputImage()
 {
@@ -176,14 +184,17 @@ void ShutdownRenderer()
 
 static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
 {
-    if (g_VkSwapChain == VK_NULL_HANDLE && !RecreateSwapChain())
+    if (g_VkSwapChain == VK_NULL_HANDLE && !RecreateSwapChainAndResetPresentId())
         return VK_NULL_HANDLE;
+
+    if (g_VkPresentWaitEnabled && g_PresentId > 1)
+        vkWaitForPresentKHR(g_VkDevice, g_VkSwapChain, g_PresentId - 1, 100000000);
 
     vkWaitForFences(g_VkDevice, 1, &g_VkFrameFence[g_CurrentFrame], VK_TRUE, (uint64_t)-1);
 
     if (g_WindowResized)
     {
-        if (!RecreateSwapChain())
+        if (!RecreateSwapChainAndResetPresentId())
             return VK_NULL_HANDLE;
 
         g_WindowResized = false;
@@ -196,7 +207,7 @@ static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
-        RecreateSwapChain();
+        RecreateSwapChainAndResetPresentId();
         return VK_NULL_HANDLE;
     }
 
@@ -284,9 +295,16 @@ static void EndFrame(VkCommandBuffer cmdBuffer, uint32_t imageIndex)
 
     vkQueueSubmit(g_VkQueue, 1, &submitInfo, g_VkFrameFence[g_CurrentFrame]);
 
+    g_PresentId++;
+
+    VkPresentIdKHR presentIdInfo = {};
+    presentIdInfo.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
+    presentIdInfo.swapchainCount = 1;
+    presentIdInfo.pPresentIds = &g_PresentId;
+
     VkPresentInfoKHR presentInfo = {};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.pNext = nullptr;
+    presentInfo.pNext = g_VkPresentWaitEnabled ? &presentIdInfo : nullptr;
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = &g_VkRenderingFinishedSemaphore[imageIndex];
     presentInfo.pSwapchains = &g_VkSwapChain;
@@ -297,7 +315,7 @@ static void EndFrame(VkCommandBuffer cmdBuffer, uint32_t imageIndex)
     VkResult result = vkQueuePresentKHR(g_VkQueue, &presentInfo);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-        RecreateSwapChain();
+        RecreateSwapChainAndResetPresentId();
 
     g_CurrentFrame = (g_CurrentFrame + 1) % g_MaxFramesInFlight;
 

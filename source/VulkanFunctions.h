@@ -69,6 +69,13 @@
 #define VULKAN_MACRO_EXT_VK_KHR_ray_tracing_pipeline(macro)
 #endif
 
+#ifdef VK_KHR_present_wait
+#define VULKAN_MACRO_EXT_VK_KHR_present_wait(macro) \
+    macro(vkWaitForPresentKHR)
+#else
+#define VULKAN_MACRO_EXT_VK_KHR_present_wait(macro)
+#endif
+
 #ifdef VK_EXT_descriptor_heap
 #define VULKAN_MACRO_EXT_VK_EXT_descriptor_heap(macro) \
     macro(vkWriteResourceDescriptorsEXT) \
@@ -145,6 +152,7 @@
     VULKAN_EXTENSION_LIST(VK_KHR_acceleration_structure, macro) \
     VULKAN_EXTENSION_LIST(VK_KHR_ray_tracing_pipeline, macro) \
     VULKAN_EXTENSION_LIST(VK_EXT_descriptor_heap, macro) \
+    VULKAN_EXTENSION_LIST(VK_KHR_present_wait, macro) \
     VULKAN_EXTENSION_LIST(VK_KHR_swapchain, macro)
 
 VULKAN_GLOBAL_FUNCTION_LIST(VULKAN_EXTERN_FUNCTION_POINTER)

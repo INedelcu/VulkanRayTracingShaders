@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <limits>
 
-uint32_t g_MaxFramesInFlight = 3;
+uint32_t g_MaxFramesInFlight = 2;
+uint32_t g_SwapChainMinImageCount = 3;
 
 std::vector<PhysicalGfxDeviceInfo>      g_VkPhysicalDevices;
 std::vector<VkExtensionProperties>      g_VkInstanceExtensions;
@@ -23,6 +24,7 @@ std::vector<VkSemaphore>    g_VkRenderingFinishedSemaphore;
 std::vector<VkFence>        g_VkFrameFence;
 VkCommandPool               g_VkCommandPool = VK_NULL_HANDLE;
 std::vector<VkCommandBuffer> g_VkCommandBuffers;
+bool                        g_VkPresentWaitEnabled = false;
 uint32_t                    g_VkQueueFamilyIndex;
 
 #ifdef VK_KHR_surface
@@ -160,7 +162,7 @@ bool CreateSwapChain()
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     createInfo.surface = g_VkPresentationSurface;
     createInfo.flags = 0;
-    createInfo.minImageCount = g_MaxFramesInFlight;
+    createInfo.minImageCount = g_SwapChainMinImageCount;
     createInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
     createInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     createInfo.imageExtent = surfProperties.currentExtent;
@@ -372,6 +374,12 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
         g_VkPhysicalDevices[i].deviceAccelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
         g_VkPhysicalDevices[i].deviceRayTracingPipelineFeatures.pNext = (void*)&g_VkPhysicalDevices[i].deviceAccelerationStructureFeatures;
 
+        g_VkPhysicalDevices[i].devicePresentIdFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+        g_VkPhysicalDevices[i].deviceAccelerationStructureFeatures.pNext = (void*)&g_VkPhysicalDevices[i].devicePresentIdFeatures;
+
+        g_VkPhysicalDevices[i].devicePresentWaitFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+        g_VkPhysicalDevices[i].devicePresentIdFeatures.pNext = (void*)&g_VkPhysicalDevices[i].devicePresentWaitFeatures;
+
         g_VkPhysicalDevices[i].deviceDescriptorHeapFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_HEAP_FEATURES_EXT;
         g_VkPhysicalDevices[i].deviceDescriptorHeapFeatures.pNext = (void*)&g_VkPhysicalDevices[i].deviceRayTracingPipelineFeatures;
 
@@ -492,6 +500,19 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
         }
     }
 
+    std::vector<const char*> deviceExtensions = kMandatoryDeviceExtensions;
+
+    g_VkPresentWaitEnabled = IsExtensionAvailable(g_VkDeviceExtensions, VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+                             IsExtensionAvailable(g_VkDeviceExtensions, VK_KHR_PRESENT_WAIT_EXTENSION_NAME) &&
+                             physicalDevice.devicePresentIdFeatures.presentId &&
+                             physicalDevice.devicePresentWaitFeatures.presentWait;
+
+    if (g_VkPresentWaitEnabled)
+    {
+        deviceExtensions.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+        deviceExtensions.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+    }
+
     float queuePriorities = 1.0f;
     VkDeviceQueueCreateInfo queueCreateInfo =
     {
@@ -503,8 +524,18 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
         &queuePriorities
     };
 
+    VkPhysicalDevicePresentWaitFeaturesKHR presentWaitFeature = {};
+    presentWaitFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+    presentWaitFeature.presentWait = true;
+
+    VkPhysicalDevicePresentIdFeaturesKHR presentIdFeature = {};
+    presentIdFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+    presentIdFeature.pNext = (void*)&presentWaitFeature;
+    presentIdFeature.presentId = true;
+
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeature = {};
     accelStructFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    accelStructFeature.pNext = g_VkPresentWaitEnabled ? (void*)&presentIdFeature : nullptr;
     accelStructFeature.accelerationStructure = true;
     accelStructFeature.accelerationStructureCaptureReplay = physicalDevice.deviceAccelerationStructureFeatures.accelerationStructureCaptureReplay;
 
@@ -550,8 +581,8 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
         &queueCreateInfo,
         0,
         nullptr,
-        (uint32_t)kMandatoryDeviceExtensions.size(),
-        kMandatoryDeviceExtensions.data(),
+        (uint32_t)deviceExtensions.size(),
+        deviceExtensions.data(),
         nullptr
     };
 
@@ -585,11 +616,11 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
     if (!surfaceSupported)
         return false;
 
-    g_MaxFramesInFlight = std::max<unsigned int>(surfProperties.minImageCount, g_MaxFramesInFlight);
+    g_SwapChainMinImageCount = std::max<unsigned int>(surfProperties.minImageCount, g_SwapChainMinImageCount);
 
     // maxImageCount == 0 means the surface has no upper limit.
     if (surfProperties.maxImageCount > 0)
-        g_MaxFramesInFlight = std::min<unsigned int>(surfProperties.maxImageCount, g_MaxFramesInFlight);
+        g_SwapChainMinImageCount = std::min<unsigned int>(surfProperties.maxImageCount, g_SwapChainMinImageCount);
 
     g_CurrentPhysicalDevice = selectedPhysicalDevice;
 

@@ -25,6 +25,8 @@ struct PhysicalGfxDeviceInfo
     VkPhysicalDeviceDescriptorHeapFeaturesEXT           deviceDescriptorHeapFeatures;
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR       deviceRayTracingPipelineFeatures;
     VkPhysicalDeviceAccelerationStructureFeaturesKHR    deviceAccelerationStructureFeatures;
+    VkPhysicalDevicePresentIdFeaturesKHR                devicePresentIdFeatures;
+    VkPhysicalDevicePresentWaitFeaturesKHR              devicePresentWaitFeatures;
     std::vector<VkQueueFamilyProperties>                deviceQueueFamilyProperties;
 #ifdef VK_KHR_surface
     VkSurfaceCapabilitiesKHR                            deviceSurfaceCaps;
@@ -43,6 +45,7 @@ extern std::vector<VkSemaphore>             g_VkRenderingFinishedSemaphore;
 extern std::vector<VkFence>                 g_VkFrameFence;
 extern VkCommandPool                        g_VkCommandPool;
 extern std::vector<VkCommandBuffer>         g_VkCommandBuffers;
+extern bool                                 g_VkPresentWaitEnabled;
 
 #ifdef VK_KHR_swapchain
 extern VkSwapchainKHR                       g_VkSwapChain;
