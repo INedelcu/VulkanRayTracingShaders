@@ -23,9 +23,12 @@ static_assert(offsetof(PushData, accelStruct) % 8 == 0, "push addresses must be 
 
 size_t      g_CurrentFrame = 0;
 uint32_t    g_FrameIndex = 0;
+uint32_t    g_AccumulatedFrames = 0;
 
 DescriptorHeap     g_ResourceHeap;
+Image              g_AccumulationImage;
 Image              g_OutputImage;
+uint32_t           g_AccumulationImageSlot = UINT32_MAX;
 uint32_t           g_OutputImageSlot = UINT32_MAX;
 RayTracingPipeline g_RayTracingPipeline;
 OrbitCamera        g_Camera;
@@ -67,29 +70,38 @@ static void ReportTraceTime(double milliseconds)
     g_TraceTimeReportTick = now;
 }
 
-static bool UpdateOutputImage()
+static bool CreateRenderTarget(Image& image, uint32_t slot, VkFormat format, VkImageUsageFlags usage, const char* name)
 {
-    if (g_OutputImage.extent.width == g_VkSwapChainExtent.width && g_OutputImage.extent.height == g_VkSwapChainExtent.height)
-        return true;
+    image = CreateImage(g_VkSwapChainExtent, format, 1, usage, name);
 
-    if (g_OutputImage.image != VK_NULL_HANDLE)
-    {
-        vkDeviceWaitIdle(g_VkDevice);
-        DestroyImage(g_OutputImage);
-    }
-
-    g_OutputImage = CreateImage(g_VkSwapChainExtent, VK_FORMAT_R32G32B32A32_SFLOAT, 1, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "Output");
-
-    if (g_OutputImage.image == VK_NULL_HANDLE)
+    if (image.image == VK_NULL_HANDLE)
         return false;
 
-    if (!g_ResourceHeap.WriteStorageImage(g_OutputImageSlot, g_OutputImage))
+    if (!g_ResourceHeap.WriteStorageImage(slot, image))
     {
-        DestroyImage(g_OutputImage);
+        DestroyImage(image);
         return false;
     }
 
     return true;
+}
+
+static bool UpdateRenderTargets()
+{
+    if (g_OutputImage.extent.width == g_VkSwapChainExtent.width && g_OutputImage.extent.height == g_VkSwapChainExtent.height)
+        return true;
+
+    g_AccumulatedFrames = 0;
+
+    if (g_OutputImage.image != VK_NULL_HANDLE)
+    {
+        vkDeviceWaitIdle(g_VkDevice);
+        DestroyImage(g_AccumulationImage);
+        DestroyImage(g_OutputImage);
+    }
+
+    return CreateRenderTarget(g_AccumulationImage, g_AccumulationImageSlot, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "Accumulation") &&
+           CreateRenderTarget(g_OutputImage, g_OutputImageSlot, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "Output");
 }
 
 bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
@@ -110,11 +122,12 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         return false;
     }
 
+    g_AccumulationImageSlot = g_ResourceHeap.Allocate();
     g_OutputImageSlot = g_ResourceHeap.Allocate();
 
-    if (!UpdateOutputImage())
+    if (!UpdateRenderTargets())
     {
-        MessageBox(hWnd, "Couldn't create the output image. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        MessageBox(hWnd, "Couldn't create the render target images. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
     }
 
@@ -155,8 +168,11 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
     if (const ShaderResourceBinding* accelStruct = rayGenReflection.Find("AccelStruct"))
         mappings.push_back(PushAddressMapping(accelStruct->set, accelStruct->binding, VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT, offsetof(PushData, accelStruct)));
 
-    // Write the output image descriptor into the descriptor heap and use its byte offset to specify where the descriptor is in the descriptor heap.
+    // Write the accumulation and output image descriptors into the descriptor heap and use their byte offsets to specify where the descriptors are in the descriptor heap.
     // Images can't be bound using push data.
+    if (const ShaderResourceBinding* accumulation = rayGenReflection.Find("Accumulation"))
+        mappings.push_back(HeapConstantOffsetMapping(accumulation->set, accumulation->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_AccumulationImageSlot)));
+
     if (const ShaderResourceBinding* output = rayGenReflection.Find("Output"))
         mappings.push_back(HeapConstantOffsetMapping(output->set, output->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_OutputImageSlot)));
 
@@ -207,11 +223,13 @@ void OnMouseDrag(float deltaX, float deltaY)
 {
     g_Camera.yaw -= deltaX * 0.006f;
     g_Camera.pitch = std::clamp(g_Camera.pitch + deltaY * 0.006f, Radians(2.0f), Radians(85.0f));
+    g_AccumulatedFrames = 0;
 }
 
 void OnMouseWheel(float steps)
 {
     g_Camera.distance = std::clamp(g_Camera.distance * std::pow(0.9f, steps), 3.0f, 40.0f);
+    g_AccumulatedFrames = 0;
 }
 
 void ShutdownRenderer()
@@ -225,6 +243,7 @@ void ShutdownRenderer()
 
     g_TraceTimer.Destroy();
     DestroyRayTracingPipeline(g_RayTracingPipeline);
+    DestroyImage(g_AccumulationImage);
     DestroyImage(g_OutputImage);
     g_ResourceHeap.Destroy();
 
@@ -258,7 +277,7 @@ static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
         g_WindowResized = false;
     }
 
-    if (!UpdateOutputImage())
+    if (!UpdateRenderTargets())
         return VK_NULL_HANDLE;
 
     VkResult result = vkAcquireNextImageKHR(g_VkDevice, g_VkSwapChain, (uint64_t)-1, g_VkImageAvailableSemaphore[g_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
@@ -294,12 +313,21 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
     BuildTLAS(cmdBuffer, g_CurrentFrame);
 #endif
 
+    // The accumulation image stays in GENERAL: this barrier orders the previous frame's writes before this frame's reads.
+    const VkImageLayout accumulationLayout = g_AccumulatedFrames == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
+
+    TransitionImage(cmdBuffer, g_AccumulationImage.image, accumulationLayout, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
     TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, g_RayTracingPipeline.pipeline);
 
-    const PushData pushData = { g_Camera.MakeFrameConstants(g_OutputImage.extent.width, g_OutputImage.extent.height), g_Tlas.address };
+    PushData pushData = { g_Camera.MakeFrameConstants(g_OutputImage.extent.width, g_OutputImage.extent.height), g_Tlas.address };
+    pushData.frame.frameIndex = g_FrameIndex;
+    pushData.frame.accumulatedFrames = g_AccumulatedFrames;
+    pushData.frame.jitter = { Halton(g_AccumulatedFrames + 1, 2), Halton(g_AccumulatedFrames + 1, 3) };
 
     VkPushDataInfoEXT pushInfo = {};
     pushInfo.sType = VK_STRUCTURE_TYPE_PUSH_DATA_INFO_EXT;
@@ -315,6 +343,8 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
                       g_OutputImage.extent.width, g_OutputImage.extent.height, 1);
 
     g_TraceTimer.End(cmdBuffer, (uint32_t)g_CurrentFrame);
+
+    g_AccumulatedFrames++;
 
     TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                     VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);

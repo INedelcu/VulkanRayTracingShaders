@@ -30,6 +30,9 @@ struct FrameConstants
     float4 cameraRight;    // xyz: right axis, w: aspect ratio (width / height)
     float4 cameraUp;       // xyz: up axis
     float4 cameraForward;  // xyz: forward axis
+    uint   frameIndex;        // random number seed
+    uint   accumulatedFrames; // frames already averaged into Output; 0 restarts the average
+    float2 jitter;            // sub-pixel offset shared by every camera ray of the frame, from the Halton (2, 3) sequence
 };
 
 #ifdef __cplusplus

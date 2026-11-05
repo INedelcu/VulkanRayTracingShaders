@@ -25,6 +25,22 @@ inline Vec3  Normalize(const Vec3& v) { return v * (1.0f / Length(v)); }
 constexpr float kPi = 3.14159265358979f;
 inline float Radians(float degrees) { return degrees * (kPi / 180.0f); }
 
+// Radical inverse: the digits of index in the given base, mirrored around the decimal point.
+inline float Halton(uint32_t index, uint32_t base)
+{
+    float result = 0.0f;
+    float fraction = 1.0f;
+
+    while (index > 0)
+    {
+        fraction /= base;
+        result += fraction * (index % base);
+        index /= base;
+    }
+
+    return result;
+}
+
 // Row-major 3x4 affine transform, the layout of VkTransformMatrixKHR.
 struct Transform
 {
