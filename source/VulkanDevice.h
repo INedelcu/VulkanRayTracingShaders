@@ -6,6 +6,11 @@
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
 
+// The headers come from the Vulkan SDK that VULKAN_SDK points to; descriptor heaps need SDK 1.4.363 or newer.
+#ifndef VK_EXT_descriptor_heap
+#error "The Vulkan SDK that VULKAN_SDK points to is too old: its headers lack VK_EXT_descriptor_heap. Download the Windows installer of Vulkan SDK 1.4.363 or newer from https://vulkan.lunarg.com/sdk/home, run it, then restart Visual Studio so it sees the new VULKAN_SDK."
+#endif
+
 #include "VulkanFunctions.h"
 
 #include <vector>

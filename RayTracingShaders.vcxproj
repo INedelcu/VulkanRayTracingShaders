@@ -44,10 +44,10 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>includes\vulkan;$(IncludePath)</IncludePath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>includes\vulkan;$(IncludePath)</IncludePath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -125,6 +125,8 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
   <PropertyGroup>
+    <VulkanSdkMinVersion>1.4.363</VulkanSdkMinVersion>
+    <VulkanSdkDownloadUrl>https://vulkan.lunarg.com/sdk/home</VulkanSdkDownloadUrl>
     <DxcPath>$(VULKAN_SDK)\Bin\dxc.exe</DxcPath>
     <ShaderOutDir>$(OutDir)shaders\</ShaderOutDir>
     <ShaderIncludes>$(MSBuildProjectDirectory)\source\SharedTypes.h;$([System.String]::Join(';', $([System.IO.Directory]::GetFiles('$(MSBuildProjectDirectory)\shaders', '*.hlsli'))))</ShaderIncludes>
@@ -140,9 +142,10 @@
       <BuildInParallel>true</BuildInParallel>
     </CustomBuild>
   </ItemDefinitionGroup>
-  <Target Name="CheckVulkanSdk" BeforeTargets="CustomBuild" Condition="'@(CustomBuild)' != ''">
-    <Error Condition="'$(VULKAN_SDK)' == ''" Text="The HLSL shaders need dxc from the Vulkan SDK, but the Vulkan SDK is not installed (VULKAN_SDK is not set). Install it from https://vulkan.lunarg.com and restart Visual Studio." />
-    <Error Condition="'$(VULKAN_SDK)' != '' And !Exists('$(DxcPath)')" Text="The HLSL shaders need dxc from the Vulkan SDK, but $(DxcPath) does not exist. Reinstall the Vulkan SDK from https://vulkan.lunarg.com." />
+  <Target Name="CheckVulkanSdk" BeforeTargets="CustomBuild;ClCompile">
+    <Error Condition="'$(VULKAN_SDK)' == ''" Text="Vulkan SDK not found: the VULKAN_SDK environment variable is not set. This project needs the SDK's Vulkan headers and its dxc shader compiler. Download the Windows installer of Vulkan SDK $(VulkanSdkMinVersion) or newer from $(VulkanSdkDownloadUrl), run it, then restart Visual Studio so it sees VULKAN_SDK." />
+    <Error Condition="'$(VULKAN_SDK)' != '' And !Exists('$(VULKAN_SDK)\Include\vulkan\vulkan.h')" Text="The Vulkan SDK in $(VULKAN_SDK) has no Vulkan headers ($(VULKAN_SDK)\Include\vulkan\vulkan.h is missing). VULKAN_SDK may point to a removed or incomplete SDK. Install Vulkan SDK $(VulkanSdkMinVersion) or newer from $(VulkanSdkDownloadUrl), then restart Visual Studio." />
+    <Error Condition="'$(VULKAN_SDK)' != '' And !Exists('$(DxcPath)')" Text="The Vulkan SDK in $(VULKAN_SDK) has no dxc shader compiler ($(DxcPath) is missing). VULKAN_SDK may point to a removed or incomplete SDK. Install Vulkan SDK $(VulkanSdkMinVersion) or newer from $(VulkanSdkDownloadUrl), then restart Visual Studio." />
     <MakeDir Directories="$(ShaderOutDir)" />
   </Target>
 </Project>
