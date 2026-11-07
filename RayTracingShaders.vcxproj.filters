@@ -103,12 +103,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="shaders\RayGen.hlsl">
+    <CustomBuild Include="source\shaders\RayGen.hlsl">
       <Filter>Shader Files</Filter>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shaders\TriangleMesh.hlsli">
+    <None Include="source\shaders\TriangleMesh.hlsli">
       <Filter>Shader Files</Filter>
     </None>
   </ItemGroup>
