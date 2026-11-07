@@ -116,9 +116,11 @@
     <ClCompile Include="source\VulkanImages.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <CustomBuild Include="source\shaders\MaterialDiffuse.hlsl" />
     <CustomBuild Include="source\shaders\RayGen.hlsl" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="source\shaders\Common.hlsli" />
     <None Include="source\shaders\TriangleMesh.hlsli" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

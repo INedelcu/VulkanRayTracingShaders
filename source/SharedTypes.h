@@ -35,6 +35,12 @@ struct FrameConstants
     float2 jitter;            // sub-pixel offset shared by every camera ray of the frame, from the Halton (2, 3) sequence
 };
 
+// Stored in each instance's hit record and read by the hit shaders as ConstantBuffer<MaterialConstants> Material.
+struct MaterialConstants
+{
+    float4 color;
+};
+
 #ifdef __cplusplus
 } // namespace shared
 #endif

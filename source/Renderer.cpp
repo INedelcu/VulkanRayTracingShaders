@@ -104,6 +104,77 @@ static bool UpdateRenderTargets()
            CreateRenderTarget(g_OutputImage, g_OutputImageSlot, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "Output");
 }
 
+static std::vector<VkDescriptorSetAndBindingMappingEXT> CreateMappings(const ShaderReflection& reflection)
+{
+    std::vector<VkDescriptorSetAndBindingMappingEXT> mappings;
+
+    if (const ShaderResourceBinding* frame = reflection.Find("Frame"))
+        mappings.push_back(PushDataMapping(frame->set, frame->binding, offsetof(PushData, frame)));
+
+    // Use vkCmdPushDataEXT to bind the TLAS to shader. Buffers and TLASes can write their addresses into push data for shader binding.
+    if (const ShaderResourceBinding* accelStruct = reflection.Find("AccelStruct"))
+        mappings.push_back(PushAddressMapping(accelStruct->set, accelStruct->binding, VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT, offsetof(PushData, accelStruct)));
+
+    // Write the accumulation and output image descriptors into the descriptor heap and use their byte offsets to specify where the descriptors are in the descriptor heap.
+    // Images can't be bound using push data.
+    if (const ShaderResourceBinding* accumulation = reflection.Find("Accumulation"))
+        mappings.push_back(HeapConstantOffsetMapping(accumulation->set, accumulation->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_AccumulationImageSlot)));
+
+    if (const ShaderResourceBinding* output = reflection.Find("Output"))
+        mappings.push_back(HeapConstantOffsetMapping(output->set, output->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_OutputImageSlot)));
+
+    // Also use VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT because of https://github.com/microsoft/DirectXShaderCompiler/issues/8492
+    const VkSpirvResourceTypeFlagsEXT storageBufferMask = VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT | VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT;
+
+    if (const ShaderResourceBinding* vertices = reflection.Find("Vertices"))
+        mappings.push_back(ShaderRecordAddressMapping(vertices->set, vertices->binding, storageBufferMask, offsetof(HitRecord, vertices)));
+
+    if (const ShaderResourceBinding* indices = reflection.Find("Indices"))
+        mappings.push_back(ShaderRecordAddressMapping(indices->set, indices->binding, storageBufferMask, offsetof(HitRecord, indices)));
+
+    if (const ShaderResourceBinding* material = reflection.Find("Material"))
+        mappings.push_back(ShaderRecordDataMapping(material->set, material->binding, offsetof(HitRecord, material)));
+
+    return mappings;
+}
+
+static bool LoadRayTracingShader(const char* name, RayTracingShaderModule& shader)
+{
+    const std::vector<uint32_t> spirv = LoadSpirv(name);
+
+    if (spirv.empty())
+        return false;
+
+    shader.module = CreateShaderModule(spirv, name);
+
+    if (shader.module == VK_NULL_HANDLE)
+        return false;
+
+    const ShaderReflection reflection(spirv);
+
+    for (const ShaderResourceBinding& binding : reflection.Bindings())
+    {
+        char message[256];
+        _snprintf_s(message, _TRUNCATE, "%s.spv: %s = set %u, binding %u\n", name, binding.name.c_str(), binding.set, binding.binding);
+        OutputDebugString(message);
+    }
+
+    shader.mappings = CreateMappings(reflection);
+
+    return true;
+}
+
+static void DestroyRayTracingShaders(RayTracingShaders& shaders)
+{
+    for (RayTracingShaderModule* shader : { &shaders.rayGen, &shaders.diffuse })
+    {
+        if (shader->module != VK_NULL_HANDLE)
+            vkDestroyShaderModule(g_VkDevice, shader->module, nullptr);
+
+        shader->module = VK_NULL_HANDLE;
+    }
+}
+
 bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 {
     g_Window = hWnd;
@@ -131,63 +202,24 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         return false;
     }
 
-    const std::vector<uint32_t> rayGenSpirv = LoadSpirv("RayGen");
-    VkShaderModule rayGenShader = VK_NULL_HANDLE;
-
-    if (!rayGenSpirv.empty())
-        rayGenShader = CreateShaderModule(rayGenSpirv, "RayGen");
-
-    if (rayGenShader == VK_NULL_HANDLE)
-    {
-        MessageBox(hWnd, "Couldn't load shaders\\RayGen.spv. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
-        return false;
-    }
-
-    const ShaderReflection rayGenReflection(rayGenSpirv);
-
-    for (const ShaderResourceBinding& binding : rayGenReflection.Bindings())
-    {
-        char message[256];
-        _snprintf_s(message, _TRUNCATE, "RayGen.spv: %s = set %u, binding %u\n", binding.name.c_str(), binding.set, binding.binding);
-        OutputDebugString(message);
-    }
-
     if (sizeof(PushData) > g_VkPhysicalDevices[g_CurrentPhysicalDevice].deviceDescriptorHeapProperties.maxPushDataSize)
     {
-        vkDestroyShaderModule(g_VkDevice, rayGenShader, nullptr);
         MessageBox(hWnd, "The push data is larger than this GPU supports. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
     }
 
-    std::vector<VkDescriptorSetAndBindingMappingEXT> mappings;
+    RayTracingShaders shaders;
 
-    if (const ShaderResourceBinding* frame = rayGenReflection.Find("Frame"))
-        mappings.push_back(PushDataMapping(frame->set, frame->binding, offsetof(PushData, frame)));
+    if (!LoadRayTracingShader("RayGen", shaders.rayGen) || !LoadRayTracingShader("MaterialDiffuse", shaders.diffuse))
+    {
+        DestroyRayTracingShaders(shaders);
+        MessageBox(hWnd, "Couldn't load the ray tracing shaders from the shaders folder. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
+    }
 
-    // Use vkCmdPushDataEXT to bind the TLAS to shader. Buffers and TLASes can write their addresses into push data for shader binding.
-    if (const ShaderResourceBinding* accelStruct = rayGenReflection.Find("AccelStruct"))
-        mappings.push_back(PushAddressMapping(accelStruct->set, accelStruct->binding, VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT, offsetof(PushData, accelStruct)));
+    const bool pipelineCreated = CreateRayTracingPipeline(g_RayTracingPipeline, shaders);
 
-    // Write the accumulation and output image descriptors into the descriptor heap and use their byte offsets to specify where the descriptors are in the descriptor heap.
-    // Images can't be bound using push data.
-    if (const ShaderResourceBinding* accumulation = rayGenReflection.Find("Accumulation"))
-        mappings.push_back(HeapConstantOffsetMapping(accumulation->set, accumulation->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_AccumulationImageSlot)));
-
-    if (const ShaderResourceBinding* output = rayGenReflection.Find("Output"))
-        mappings.push_back(HeapConstantOffsetMapping(output->set, output->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_OutputImageSlot)));
-
-    // Also use VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT because of https://github.com/microsoft/DirectXShaderCompiler/issues/8492
-    const VkSpirvResourceTypeFlagsEXT storageBufferMask = VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT | VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT;
-
-    if (const ShaderResourceBinding* vertices = rayGenReflection.Find("Vertices"))
-        mappings.push_back(ShaderRecordAddressMapping(vertices->set, vertices->binding, storageBufferMask, offsetof(MeshRecord, vertices)));
-
-    if (const ShaderResourceBinding* indices = rayGenReflection.Find("Indices"))
-        mappings.push_back(ShaderRecordAddressMapping(indices->set, indices->binding, storageBufferMask, offsetof(MeshRecord, indices)));
-
-    const bool pipelineCreated = CreateRayTracingPipeline(g_RayTracingPipeline, rayGenShader, mappings);
-
-    vkDestroyShaderModule(g_VkDevice, rayGenShader, nullptr);
+    DestroyRayTracingShaders(shaders);
 
     if (!pipelineCreated)
     {
@@ -195,10 +227,17 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         return false;
     }
 
-    std::vector<MeshRecord> hitRecords;
+    std::vector<HitRecord> hitRecords;
 
     for (const Instance& instance : g_Instances)
-        hitRecords.push_back({ g_Meshes[instance.mesh].vertexBuffer.address, g_Meshes[instance.mesh].indexBuffer.address });
+    {
+        HitRecord hitRecord = {};
+        hitRecord.vertices = g_Meshes[instance.mesh].vertexBuffer.address;
+        hitRecord.indices = g_Meshes[instance.mesh].indexBuffer.address;
+        hitRecord.material.color = { instance.color.x, instance.color.y, instance.color.z, 0.0f };
+
+        hitRecords.push_back(hitRecord);
+    }
 
     if (!CreateShaderBindingTable(g_RayTracingPipeline, hitRecords))
     {

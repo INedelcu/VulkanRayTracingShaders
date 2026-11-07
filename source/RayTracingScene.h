@@ -26,6 +26,7 @@ struct Instance
 {
     uint32_t  mesh = 0;
     Transform transform;
+    Vec3      color = { 1.0f, 1.0f, 1.0f };
 };
 
 extern std::vector<Mesh>     g_Meshes;

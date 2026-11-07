@@ -3,8 +3,8 @@
 
 #include <cstring>
 
-enum ShaderStage : uint32_t { StageRayGen, StageMissRadiance, StageMissShadow, StageClosestHit, StageCount };
-enum ShaderGroup : uint32_t { GroupRayGen, GroupMissRadiance, GroupMissShadow, GroupHitRadiance, GroupHitShadow, GroupCount };
+enum ShaderStage : uint32_t { StageRayGen, StageMissRadiance, StageMissShadow, StageClosestHitDiffuse, StageCount };
+enum ShaderGroup : uint32_t { GroupRayGen, GroupMissRadiance, GroupMissShadow, GroupHitDiffuse, GroupHitShadow, GroupCount };
 
 static VkDescriptorSetAndBindingMappingEXT MakeMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, VkDescriptorMappingSourceEXT source)
 {
@@ -31,6 +31,14 @@ VkDescriptorSetAndBindingMappingEXT PushDataMapping(uint32_t set, uint32_t bindi
 {
     VkDescriptorSetAndBindingMappingEXT mapping = MakeMapping(set, binding, VK_SPIRV_RESOURCE_TYPE_UNIFORM_BUFFER_BIT_EXT, VK_DESCRIPTOR_MAPPING_SOURCE_PUSH_DATA_EXT);
     mapping.sourceData.pushDataOffset = pushOffset;
+
+    return mapping;
+}
+
+VkDescriptorSetAndBindingMappingEXT ShaderRecordDataMapping(uint32_t set, uint32_t binding, uint32_t recordOffset)
+{
+    VkDescriptorSetAndBindingMappingEXT mapping = MakeMapping(set, binding, VK_SPIRV_RESOURCE_TYPE_UNIFORM_BUFFER_BIT_EXT, VK_DESCRIPTOR_MAPPING_SOURCE_SHADER_RECORD_DATA_EXT);
+    mapping.sourceData.shaderRecordDataOffset = recordOffset;
 
     return mapping;
 }
@@ -77,7 +85,7 @@ static VkRayTracingShaderGroupCreateInfoKHR TrianglesGroup(uint32_t closestHitSt
     return group;
 }
 
-bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<MeshRecord>& hitRecords)
+bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<HitRecord>& hitRecords)
 {
     const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& rtpp = g_VkPhysicalDevices[g_CurrentPhysicalDevice].deviceRayTracingPipelineProperties;
 
@@ -87,11 +95,11 @@ bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<
     if (vkGetRayTracingShaderGroupHandlesKHR(g_VkDevice, rtPipeline.pipeline, 0, GroupCount, handles.size(), handles.data()) != VK_SUCCESS)
         return false;
 
-    // The raygen and miss records (one miss record per ray type) hold only shader handles. Each instance has one hit record per ray type: the hit group handle followed by a MeshRecord with the instance's vertex and index buffer addresses.
+    // The raygen and miss records (one miss record per ray type) hold only shader handles. Each instance has one hit record per ray type: the hit group handle followed by a HitRecord with the instance's vertex and index buffer addresses and its material constants.
 
     const VkDeviceSize raygenStride = AlignUp(handleSize, rtpp.shaderGroupBaseAlignment);
     const VkDeviceSize missStride = AlignUp(handleSize, rtpp.shaderGroupHandleAlignment);
-    const VkDeviceSize hitStride = AlignUp(handleSize + sizeof(MeshRecord), rtpp.shaderGroupHandleAlignment);
+    const VkDeviceSize hitStride = AlignUp(handleSize + sizeof(HitRecord), rtpp.shaderGroupHandleAlignment);
 
     if (hitRecords.empty() || hitStride > rtpp.maxShaderGroupStride)
         return false;
@@ -118,7 +126,7 @@ bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<
     missGroups[shared::RAY_TYPE_SHADOW] = GroupMissShadow;
 
     ShaderGroup hitGroups[shared::RAY_TYPE_COUNT];
-    hitGroups[shared::RAY_TYPE_RADIANCE] = GroupHitRadiance;
+    hitGroups[shared::RAY_TYPE_RADIANCE] = GroupHitDiffuse;
     hitGroups[shared::RAY_TYPE_SHADOW] = GroupHitShadow;
 
     memcpy(table + raygenOffset, handles.data() + GroupRayGen * handleSize, handleSize);
@@ -132,7 +140,7 @@ bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<
         {
             uint8_t* record = table + hitOffset + (i * shared::RAY_TYPE_COUNT + rayType) * hitStride;
             memcpy(record, handles.data() + hitGroups[rayType] * handleSize, handleSize);
-            memcpy(record + handleSize, &hitRecords[i], sizeof(MeshRecord));
+            memcpy(record + handleSize, &hitRecords[i], sizeof(HitRecord));
         }
     }
 
@@ -144,24 +152,26 @@ bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<
     return true;
 }
 
-bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, VkShaderModule shaderModule, const std::vector<VkDescriptorSetAndBindingMappingEXT>& mappings)
+bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, const RayTracingShaders& shaders)
 {
-    VkShaderDescriptorSetAndBindingMappingInfoEXT mappingInfo = {};
-    mappingInfo.sType = VK_STRUCTURE_TYPE_SHADER_DESCRIPTOR_SET_AND_BINDING_MAPPING_INFO_EXT;
-    mappingInfo.mappingCount = (uint32_t)mappings.size();
-    mappingInfo.pMappings = mappings.data();
-
+    const RayTracingShaderModule* stageShaders[StageCount] = { &shaders.rayGen, &shaders.rayGen, &shaders.rayGen, &shaders.diffuse };
     const VkShaderStageFlagBits stageFlags[StageCount] = { VK_SHADER_STAGE_RAYGEN_BIT_KHR, VK_SHADER_STAGE_MISS_BIT_KHR, VK_SHADER_STAGE_MISS_BIT_KHR, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR };
-    const char* entryPoints[StageCount] = { "RayGen", "MissRadiance", "MissShadow", "ClosestHit" };
+    const char* entryPoints[StageCount] = { "RayGen", "MissRadiance", "MissShadow", "ClosestHitDiffuse" };
 
+    // Each module has its own bindings, so each stage gets the mappings made from its own module's reflection.
+    VkShaderDescriptorSetAndBindingMappingInfoEXT mappingInfos[StageCount] = {};
     VkPipelineShaderStageCreateInfo stages[StageCount] = {};
 
     for (uint32_t i = 0; i < StageCount; i++)
     {
+        mappingInfos[i].sType = VK_STRUCTURE_TYPE_SHADER_DESCRIPTOR_SET_AND_BINDING_MAPPING_INFO_EXT;
+        mappingInfos[i].mappingCount = (uint32_t)stageShaders[i]->mappings.size();
+        mappingInfos[i].pMappings = stageShaders[i]->mappings.data();
+
         stages[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        stages[i].pNext = &mappingInfo;
+        stages[i].pNext = &mappingInfos[i];
         stages[i].stage = stageFlags[i];
-        stages[i].module = shaderModule;
+        stages[i].module = stageShaders[i]->module;
         stages[i].pName = entryPoints[i];
     }
 
@@ -169,7 +179,7 @@ bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, VkShaderModule sha
     groups[GroupRayGen] = GeneralGroup(StageRayGen);
     groups[GroupMissRadiance] = GeneralGroup(StageMissRadiance);
     groups[GroupMissShadow] = GeneralGroup(StageMissShadow);
-    groups[GroupHitRadiance] = TrianglesGroup(StageClosestHit);
+    groups[GroupHitDiffuse] = TrianglesGroup(StageClosestHitDiffuse);
     groups[GroupHitShadow] = TrianglesGroup(VK_SHADER_UNUSED_KHR);
 
     VkPipelineCreateFlags2CreateInfo flags2 = {};

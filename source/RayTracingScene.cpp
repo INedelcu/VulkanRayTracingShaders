@@ -82,41 +82,49 @@ static void CreateInstances()
     Instance ground;
     ground.mesh = MeshQuad;
     ground.transform = Transform::Scale({ 16.0f, 1.0f, 16.0f });
+    ground.color = { 0.50f, 0.47f, 0.43f };
     g_Instances.push_back(ground);
 
     Instance cube1;
     cube1.mesh = MeshCube;
     cube1.transform = Transform::Translation({ -3.2f, 1.0f, -0.6f }) * Transform::RotationY(Radians(25.0f));
+    cube1.color = { 0.50f, 0.16f, 0.10f };
     g_Instances.push_back(cube1);
 
     Instance cube2;
     cube2.mesh = MeshCube;
     cube2.transform = Transform::Translation({ -3.2f, 2.6f, -0.6f }) * Transform::RotationY(Radians(55.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
+    cube2.color = { 0.55f, 0.36f, 0.17f };
     g_Instances.push_back(cube2);
 
     Instance cube3;
     cube3.mesh = MeshCube;
     cube3.transform = Transform::Translation({ 3.6f, 0.5f, -1.0f }) * Transform::RotationY(Radians(-30.0f)) * Transform::Scale({ 0.5f, 0.5f, 0.5f });
+    cube3.color = { 0.76f, 0.76f, 0.76f };
     g_Instances.push_back(cube3);
 
     Instance sphere1;
     sphere1.mesh = MeshSphere;
     sphere1.transform = Transform::Translation({ -1.2f, 0.75f, 2.6f }) * Transform::Scale({ 0.75f, 0.75f, 0.75f });
+    sphere1.color = { 0.3f, 0.6f, 0.95f };
     g_Instances.push_back(sphere1);
 
     Instance sphere2;
     sphere2.mesh = MeshSphere;
     sphere2.transform = Transform::Translation({ 0.2f, 1.3f, -1.4f }) * Transform::Scale({ 1.3f, 1.3f, 1.3f });
+    sphere2.color = { 1.0f, 1.0f, 1.0f };
     g_Instances.push_back(sphere2);
 
     Instance torus;
     torus.mesh = MeshTorus;
     torus.transform = Transform::Translation({ 2.6f, 0.32f, 1.6f }) * Transform::RotationY(Radians(20.0f));
+    torus.color = { 0.80f, 0.55f, 0.15f };
     g_Instances.push_back(torus);
 
     Instance quad;
     quad.mesh = MeshQuad;
     quad.transform = Transform::Translation({ 1.8f, 1.6f, -4.2f }) * Transform::RotationY(Radians(-15.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 1.6f, 1.0f, 1.6f });
+    quad.color = { 0.20f, 0.50f, 0.22f };
     g_Instances.push_back(quad);
 }
 
