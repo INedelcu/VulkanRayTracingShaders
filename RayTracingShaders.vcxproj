@@ -121,6 +121,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="source\shaders\Common.hlsli" />
+    <None Include="source\shaders\GGX.hlsli" />
     <None Include="source\shaders\TriangleMesh.hlsli" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

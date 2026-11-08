@@ -106,13 +106,15 @@ static void CreateInstances()
     Instance sphere1;
     sphere1.mesh = MeshSphere;
     sphere1.transform = Transform::Translation({ -1.2f, 0.75f, 2.6f }) * Transform::Scale({ 0.75f, 0.75f, 0.75f });
-    sphere1.color = { 0.3f, 0.6f, 0.95f };
+    sphere1.color = { 0.0f, 0.3f, 0.0f };
+    sphere1.roughness = 0.0f;
     g_Instances.push_back(sphere1);
 
     Instance sphere2;
     sphere2.mesh = MeshSphere;
     sphere2.transform = Transform::Translation({ 0.2f, 1.3f, -1.4f }) * Transform::Scale({ 1.3f, 1.3f, 1.3f });
-    sphere2.color = { 1.0f, 1.0f, 1.0f };
+    sphere2.color = { 0.3f, 0.0f, 0.0f };
+    sphere2.roughness = 0.0f;
     g_Instances.push_back(sphere2);
 
     Instance torus;

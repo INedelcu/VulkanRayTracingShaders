@@ -8,29 +8,15 @@ ConstantBuffer<FrameConstants> Frame : register(b0, space1);
 static const float3 kSkyHorizon = float3(0.60f, 0.75f, 0.90f);
 static const float3 kSkyZenith = float3(0.07, 0.21, 0.69);
 
-static const float  kSunCosRadius    = cos(radians(2.0f)); // cosine of the sun disc's angular radius
 static const uint   kMaxPathSegments = 8;
 static const float  kExposure        = 0.8f;
 
-// A direction toward a random point of the sun disc, uniform over its solid angle. Points near a shadow edge see
-// only part of the disc, so averaged over frames the edge becomes a penumbra as wide as the disc makes it.
-float3 SampleSunDirection(inout uint rng)
-{
-    float cosTheta = lerp(kSunCosRadius, 1.0f, Random(rng));
-    float sinTheta = sqrt(max(0.0f, 1.0f - cosTheta * cosTheta));
-    float phi      = 2.0f * kPi * Random(rng);
-
-    float3 t, b;
-    BuildOrthonormalBasis(kSunDirection, t, b);
-
-    return t * (sinTheta * cos(phi)) + b * (sinTheta * sin(phi)) + kSunDirection * cosTheta;
-}
-
-bool IsSunVisible(float3 origin, inout uint rng)
+// Whether the sun is visible from origin along direction, a point of the sun disc the hit shader picked.
+bool IsSunVisible(float3 origin, float3 direction)
 {
     RayDesc ray;
     ray.Origin    = origin;
-    ray.Direction = SampleSunDirection(rng);
+    ray.Direction = direction;
     ray.TMin      = 0.0f;
     ray.TMax      = 10000.0f;
 
@@ -87,22 +73,29 @@ float3 TracePath(RayDesc ray, inout uint rng)
 {
     float3 radiance   = float3(0.0f, 0.0f, 0.0f);
     float3 throughput = float3(1.0f, 1.0f, 1.0f);
+    uint   flags      = kFlagSpecularPath;
+    float  pathAlpha  = 0.0f;
 
     for (uint segment = 0; segment < kMaxPathSegments; segment++)
     {
         RadiancePayload payload;
-        payload.emitted   = float3(0.0f, 0.0f, 0.0f);
-        payload.direct    = float3(0.0f, 0.0f, 0.0f);
-        payload.weight    = float3(0.0f, 0.0f, 0.0f);
-        payload.origin    = float3(0.0f, 0.0f, 0.0f);
-        payload.direction = float3(0.0f, 0.0f, 0.0f);
-        payload.rngState  = rng;
+        payload.emitted      = float3(0.0f, 0.0f, 0.0f);
+        payload.direct       = float3(0.0f, 0.0f, 0.0f);
+        payload.sunDirection = float3(0.0f, 0.0f, 0.0f);
+        payload.weight       = float3(0.0f, 0.0f, 0.0f);
+        payload.origin       = float3(0.0f, 0.0f, 0.0f);
+        payload.direction    = float3(0.0f, 0.0f, 0.0f);
+        payload.rngState     = rng;
+        payload.flags        = flags;
+        payload.pathAlpha    = pathAlpha;
         TraceRay(AccelStruct, RAY_FLAG_NONE, 0xFF, RAY_TYPE_RADIANCE, RAY_TYPE_COUNT, RAY_TYPE_RADIANCE, ray, payload);
-        rng = payload.rngState;
+        rng       = payload.rngState;
+        flags     = payload.flags;
+        pathAlpha = payload.pathAlpha;
 
         radiance += throughput * payload.emitted;
 
-        if (any(payload.direct > 0.0f) && IsSunVisible(payload.origin, rng))
+        if (any(payload.direct > 0.0f) && IsSunVisible(payload.origin, payload.sunDirection))
             radiance += throughput * payload.direct;
 
         throughput *= payload.weight;

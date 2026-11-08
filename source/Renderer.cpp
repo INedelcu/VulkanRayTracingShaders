@@ -235,6 +235,8 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         hitRecord.vertices = g_Meshes[instance.mesh].vertexBuffer.address;
         hitRecord.indices = g_Meshes[instance.mesh].indexBuffer.address;
         hitRecord.material.color = { instance.color.x, instance.color.y, instance.color.z, 0.0f };
+        hitRecord.material.ior = instance.ior;
+        hitRecord.material.roughness = instance.roughness;
 
         hitRecords.push_back(hitRecord);
     }

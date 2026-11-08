@@ -27,6 +27,8 @@ struct Instance
     uint32_t  mesh = 0;
     Transform transform;
     Vec3      color = { 1.0f, 1.0f, 1.0f };
+    float     ior = 1.5f;
+    float     roughness = 1.0f; // 1 is matte, 0 a mirror
 };
 
 extern std::vector<Mesh>     g_Meshes;

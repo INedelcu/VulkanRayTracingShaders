@@ -1,17 +1,73 @@
 #include "Common.hlsli"
 #include "TriangleMesh.hlsli"
+#include "GGX.hlsli"
 
 ConstantBuffer<MaterialConstants> Material; // data in the instance's hit record
 
+// A diffuse base under a dielectric coat, smooth or rough: PathTracing/Standard with metallic 0 in the Unity path
+// tracer. Each bounce follows one of the two lobes, picked by how bright each is.
 [shader("closesthit")]
 void ClosestHitDiffuse(inout RadiancePayload payload, in BuiltInTriangleIntersectionAttributes attributes)
 {
-    SurfaceHit hit    = FetchSurface(attributes);
-    float3     albedo = Material.color.rgb;
+    SurfaceHit hit   = FetchSurface(attributes);
+    float3     v     = -WorldRayDirection();
+    float      alpha = RoughnessToAlpha(Material.roughness);
 
-    // Lambert BRDF is albedo / pi, and kSunColor is already divided by pi.
-    payload.direct = albedo * kSunColor * saturate(dot(hit.shadingNormal, kSunDirection));
+    // The coat reflects f0 at normal incidence, from its index of refraction (4% at 1.5), and more toward grazing
+    // angles. The light it doesn't reflect reaches the diffuse base.
+    float  f0Root      = (Material.ior - 1.0f) / (Material.ior + 1.0f);
+    float  f0          = f0Root * f0Root;
+    float3 diffuseTint = Material.color.rgb * (1.0f - f0);
+
+    // Interpolated normals can turn away from a grazing view.
+    float3 n = dot(hit.shadingNormal, v) > 0.0f ? hit.shadingNormal : hit.geometricNormal;
+
+    // The sun through a shadow ray toward a random point of its disc, for both lobes: bounces don't see the disc.
+    // Lambert BRDF is albedo / pi, and kSunColor is already divided by pi, so the coat's BRDF times cos is scaled back
+    // by pi. A coat sharper than the disc is widened to it here (kSunAlpha), and to the roughest surface the path came
+    // through (pathAlpha), not in its bounces. Without multiple importance sampling, the densities go unused.
+    payload.sunDirection = SampleSunDirection(payload.rngState);
+
+    float  coatSunPdf;
+    float3 coatSun = EvaluateSpecularGGX(v, payload.sunDirection, n, f0, max(alpha, max(kSunAlpha, payload.pathAlpha)), coatSunPdf) * kPi;
+
+    // After a diffuse bounce the coat's glint would light that surface as a caustic, found too rarely to converge
+    // without fireflies: like metal and glass, leave it out on those paths.
+    if ((payload.flags & kFlagSpecularPath) == 0)
+        coatSun = 0.0f;
+
+    payload.direct = (diffuseTint * saturate(dot(hit.shadingNormal, payload.sunDirection)) + coatSun) * kSunColor;
     payload.origin = OffsetRayOrigin(hit.smoothPosition, hit.geometricNormal);
+
+    // The coat's share of the bounces, from the brightness of each lobe, kept within [0.1, 0.9] so neither starves.
+    // Each lobe's weight is divided by the chance of picking it.
+    float coatChance = clamp(f0 / max(f0 + Luminance(Material.color.rgb), 1e-7f), 0.1f, 0.9f);
+
+    if (Random(payload.rngState) < coatChance)
+    {
+        // Reflect off a visible microfacet of the coat: the weight collapses to F G2 / G1 (Heitz 2018, eq. 19).
+        // Like metal, it stays the kind of path it was. A microfacet can send the ray below the surface, where it
+        // would scatter again; single scattering drops it.
+        float3 direction;
+        float3 coatWeight;
+        float  coatPdf;
+
+        if (!SampleSpecularGGX(v, n, f0, alpha, payload.rngState, direction, coatWeight, coatPdf))
+        {
+            payload.weight = 0.0f;
+            return;
+        }
+
+        payload.weight = coatWeight / coatChance;
+
+        // Interpolated normals can still bend the ray into the triangle; keep it above.
+        if (dot(direction, hit.geometricNormal) <= 0.0f)
+            direction = reflect(direction, hit.geometricNormal);
+
+        payload.direction = direction;
+        payload.pathAlpha = max(payload.pathAlpha, alpha);
+        return;
+    }
 
     // Cosine-weighted bounce: the pdf cos / pi cancels the cosine and the 1 / pi of the BRDF, leaving the albedo.
     float3 direction = SampleCosineHemisphere(hit.shadingNormal, payload.rngState);
@@ -20,6 +76,8 @@ void ClosestHitDiffuse(inout RadiancePayload payload, in BuiltInTriangleIntersec
     if (dot(direction, hit.geometricNormal) <= 0.0f)
         direction = reflect(direction, hit.geometricNormal);
 
-    payload.weight    = albedo;
+    payload.weight    = diffuseTint / (1.0f - coatChance);
     payload.direction = direction;
+    payload.flags     = 0;
+    payload.pathAlpha = 1.0f;
 }

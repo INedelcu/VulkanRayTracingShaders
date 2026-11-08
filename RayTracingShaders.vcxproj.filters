@@ -117,5 +117,8 @@
     <None Include="source\shaders\Common.hlsli">
       <Filter>Shader Files</Filter>
     </None>
+    <None Include="source\shaders\GGX.hlsli">
+      <Filter>Shader Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

@@ -39,6 +39,8 @@ struct FrameConstants
 struct MaterialConstants
 {
     float4 color;
+    float  ior;
+    float  roughness; // 1 is matte, 0 a mirror
 };
 
 #ifdef __cplusplus
