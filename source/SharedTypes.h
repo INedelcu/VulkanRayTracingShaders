@@ -40,7 +40,8 @@ struct MaterialConstants
 {
     float4 color;
     float  ior;
-    float  roughness; // 1 is matte, 0 a mirror
+    float  extinction; // glass tint per unit crossed: 0 = clear, 1 = a color channel at 0 keeps 37%, 3 = keeps 5%
+    float  roughness;  // 1 is matte, 0 a mirror
 };
 
 #ifdef __cplusplus

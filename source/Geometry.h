@@ -22,3 +22,6 @@ MeshData CreateUvSphere(uint32_t slices, uint32_t stacks);
 
 // XZ plane torus
 MeshData CreateTorus(float majorRadius, float minorRadius, uint32_t majorSegments, uint32_t minorSegments);
+
+// Capped cylinder around the Y axis with radius 1, y in [-1, 1]
+MeshData CreateCylinder(uint32_t segments);

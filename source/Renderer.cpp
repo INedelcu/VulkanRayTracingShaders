@@ -166,7 +166,7 @@ static bool LoadRayTracingShader(const char* name, RayTracingShaderModule& shade
 
 static void DestroyRayTracingShaders(RayTracingShaders& shaders)
 {
-    for (RayTracingShaderModule* shader : { &shaders.rayGen, &shaders.diffuse })
+    for (RayTracingShaderModule* shader : { &shaders.rayGen, &shaders.diffuse, &shaders.glass })
     {
         if (shader->module != VK_NULL_HANDLE)
             vkDestroyShaderModule(g_VkDevice, shader->module, nullptr);
@@ -210,7 +210,7 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 
     RayTracingShaders shaders;
 
-    if (!LoadRayTracingShader("RayGen", shaders.rayGen) || !LoadRayTracingShader("MaterialDiffuse", shaders.diffuse))
+    if (!LoadRayTracingShader("RayGen", shaders.rayGen) || !LoadRayTracingShader("MaterialDiffuse", shaders.diffuse) || !LoadRayTracingShader("MaterialGlass", shaders.glass))
     {
         DestroyRayTracingShaders(shaders);
         MessageBox(hWnd, "Couldn't load the ray tracing shaders from the shaders folder. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
@@ -227,16 +227,18 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         return false;
     }
 
-    std::vector<HitRecord> hitRecords;
+    std::vector<InstanceHitRecord> hitRecords;
 
     for (const Instance& instance : g_Instances)
     {
-        HitRecord hitRecord = {};
-        hitRecord.vertices = g_Meshes[instance.mesh].vertexBuffer.address;
-        hitRecord.indices = g_Meshes[instance.mesh].indexBuffer.address;
-        hitRecord.material.color = { instance.color.x, instance.color.y, instance.color.z, 0.0f };
-        hitRecord.material.ior = instance.ior;
-        hitRecord.material.roughness = instance.roughness;
+        InstanceHitRecord hitRecord = {};
+        hitRecord.material = instance.material;
+        hitRecord.record.vertices = g_Meshes[instance.mesh].vertexBuffer.address;
+        hitRecord.record.indices = g_Meshes[instance.mesh].indexBuffer.address;
+        hitRecord.record.material.color = { instance.color.x, instance.color.y, instance.color.z, 0.0f };
+        hitRecord.record.material.ior = instance.ior;
+        hitRecord.record.material.extinction = instance.extinction;
+        hitRecord.record.material.roughness = instance.roughness;
 
         hitRecords.push_back(hitRecord);
     }

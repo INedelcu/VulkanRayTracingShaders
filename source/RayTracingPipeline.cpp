@@ -3,8 +3,19 @@
 
 #include <cstring>
 
-enum ShaderStage : uint32_t { StageRayGen, StageMissRadiance, StageMissShadow, StageClosestHitDiffuse, StageCount };
-enum ShaderGroup : uint32_t { GroupRayGen, GroupMissRadiance, GroupMissShadow, GroupHitDiffuse, GroupHitShadow, GroupCount };
+enum ShaderStage : uint32_t { StageRayGen, StageMissRadiance, StageMissShadow, StageClosestHitDiffuse, StageClosestHitGlass, StageAnyHitGlassShadow, StageCount };
+enum ShaderGroup : uint32_t { GroupRayGen, GroupMissRadiance, GroupMissShadow, GroupHitDiffuse, GroupHitGlass, GroupHitShadow, GroupHitShadowGlass, GroupCount };
+
+static ShaderGroup RadianceHitGroup(MaterialType material)
+{
+    return material == MaterialType::Glass ? GroupHitGlass : GroupHitDiffuse;
+}
+
+// Glass filters shadow rays in its any-hit shader; everything else just stops them.
+static ShaderGroup ShadowHitGroup(MaterialType material)
+{
+    return material == MaterialType::Glass ? GroupHitShadowGlass : GroupHitShadow;
+}
 
 static VkDescriptorSetAndBindingMappingEXT MakeMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, VkDescriptorMappingSourceEXT source)
 {
@@ -72,20 +83,20 @@ static VkRayTracingShaderGroupCreateInfoKHR GeneralGroup(uint32_t stage)
     return group;
 }
 
-static VkRayTracingShaderGroupCreateInfoKHR TrianglesGroup(uint32_t closestHitStage)
+static VkRayTracingShaderGroupCreateInfoKHR TrianglesGroup(uint32_t closestHitStage, uint32_t anyHitStage = VK_SHADER_UNUSED_KHR)
 {
     VkRayTracingShaderGroupCreateInfoKHR group = {};
     group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
     group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
     group.generalShader = VK_SHADER_UNUSED_KHR;
     group.closestHitShader = closestHitStage;
-    group.anyHitShader = VK_SHADER_UNUSED_KHR;
+    group.anyHitShader = anyHitStage;
     group.intersectionShader = VK_SHADER_UNUSED_KHR;
 
     return group;
 }
 
-bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<HitRecord>& hitRecords)
+bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<InstanceHitRecord>& hitRecords)
 {
     const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& rtpp = g_VkPhysicalDevices[g_CurrentPhysicalDevice].deviceRayTracingPipelineProperties;
 
@@ -125,10 +136,6 @@ bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<
     missGroups[shared::RAY_TYPE_RADIANCE] = GroupMissRadiance;
     missGroups[shared::RAY_TYPE_SHADOW] = GroupMissShadow;
 
-    ShaderGroup hitGroups[shared::RAY_TYPE_COUNT];
-    hitGroups[shared::RAY_TYPE_RADIANCE] = GroupHitDiffuse;
-    hitGroups[shared::RAY_TYPE_SHADOW] = GroupHitShadow;
-
     memcpy(table + raygenOffset, handles.data() + GroupRayGen * handleSize, handleSize);
 
     for (uint32_t rayType = 0; rayType < shared::RAY_TYPE_COUNT; rayType++)
@@ -136,11 +143,15 @@ bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<
 
     for (size_t i = 0; i < hitRecords.size(); i++)
     {
+        ShaderGroup hitGroups[shared::RAY_TYPE_COUNT];
+        hitGroups[shared::RAY_TYPE_RADIANCE] = RadianceHitGroup(hitRecords[i].material);
+        hitGroups[shared::RAY_TYPE_SHADOW] = ShadowHitGroup(hitRecords[i].material);
+
         for (uint32_t rayType = 0; rayType < shared::RAY_TYPE_COUNT; rayType++)
         {
             uint8_t* record = table + hitOffset + (i * shared::RAY_TYPE_COUNT + rayType) * hitStride;
             memcpy(record, handles.data() + hitGroups[rayType] * handleSize, handleSize);
-            memcpy(record + handleSize, &hitRecords[i], sizeof(HitRecord));
+            memcpy(record + handleSize, &hitRecords[i].record, sizeof(HitRecord));
         }
     }
 
@@ -154,9 +165,9 @@ bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<
 
 bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, const RayTracingShaders& shaders)
 {
-    const RayTracingShaderModule* stageShaders[StageCount] = { &shaders.rayGen, &shaders.rayGen, &shaders.rayGen, &shaders.diffuse };
-    const VkShaderStageFlagBits stageFlags[StageCount] = { VK_SHADER_STAGE_RAYGEN_BIT_KHR, VK_SHADER_STAGE_MISS_BIT_KHR, VK_SHADER_STAGE_MISS_BIT_KHR, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR };
-    const char* entryPoints[StageCount] = { "RayGen", "MissRadiance", "MissShadow", "ClosestHitDiffuse" };
+    const RayTracingShaderModule* stageShaders[StageCount] = { &shaders.rayGen, &shaders.rayGen, &shaders.rayGen, &shaders.diffuse, &shaders.glass, &shaders.glass };
+    const VkShaderStageFlagBits stageFlags[StageCount] = { VK_SHADER_STAGE_RAYGEN_BIT_KHR, VK_SHADER_STAGE_MISS_BIT_KHR, VK_SHADER_STAGE_MISS_BIT_KHR, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, VK_SHADER_STAGE_ANY_HIT_BIT_KHR };
+    const char* entryPoints[StageCount] = { "RayGen", "MissRadiance", "MissShadow", "ClosestHitDiffuse", "ClosestHitGlass", "AnyHitGlassShadow" };
 
     // Each module has its own bindings, so each stage gets the mappings made from its own module's reflection.
     VkShaderDescriptorSetAndBindingMappingInfoEXT mappingInfos[StageCount] = {};
@@ -180,7 +191,9 @@ bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, const RayTracingSh
     groups[GroupMissRadiance] = GeneralGroup(StageMissRadiance);
     groups[GroupMissShadow] = GeneralGroup(StageMissShadow);
     groups[GroupHitDiffuse] = TrianglesGroup(StageClosestHitDiffuse);
+    groups[GroupHitGlass] = TrianglesGroup(StageClosestHitGlass);
     groups[GroupHitShadow] = TrianglesGroup(VK_SHADER_UNUSED_KHR);
+    groups[GroupHitShadowGlass] = TrianglesGroup(VK_SHADER_UNUSED_KHR, StageAnyHitGlassShadow);
 
     VkPipelineCreateFlags2CreateInfo flags2 = {};
     flags2.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO;

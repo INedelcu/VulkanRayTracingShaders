@@ -12,7 +12,8 @@ enum MeshId : uint8_t
     MeshQuad = 0,
     MeshCube,
     MeshSphere,
-    MeshTorus
+    MeshTorus,
+    MeshCylinder
 };
 
 std::vector<Mesh>       g_Meshes;
@@ -57,8 +58,8 @@ static void CreateMeshes()
 {
     const VkBufferUsageFlags geometryUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 
-    const MeshData meshData[] = { CreateQuad(), CreateCube(), CreateUvSphere(128, 64), CreateTorus(1.0f, 0.32f, 256, 64) };
-    const char* meshNames[] = { "Quad", "Cube", "Sphere", "Torus" };
+    const MeshData meshData[] = { CreateQuad(), CreateCube(), CreateUvSphere(128, 64), CreateTorus(1.0f, 0.32f, 256, 64), CreateCylinder(128) };
+    const char* meshNames[] = { "Quad", "Cube", "Sphere", "Torus", "Cylinder" };
 
     for (size_t i = 0; i < std::size(meshData); i++)
     {
@@ -113,8 +114,10 @@ static void CreateInstances()
     Instance sphere2;
     sphere2.mesh = MeshSphere;
     sphere2.transform = Transform::Translation({ 0.2f, 1.3f, -1.4f }) * Transform::Scale({ 1.3f, 1.3f, 1.3f });
-    sphere2.color = { 0.3f, 0.0f, 0.0f };
-    sphere2.roughness = 0.0f;
+    sphere2.material = MaterialType::Glass;
+    sphere2.color = { 0.92f, 0.86f, 0.19f };
+    sphere2.ior = 1.7f;
+    sphere2.roughness = 0.25f;
     g_Instances.push_back(sphere2);
 
     Instance torus;
@@ -128,6 +131,99 @@ static void CreateInstances()
     quad.transform = Transform::Translation({ 1.8f, 1.6f, -4.2f }) * Transform::RotationY(Radians(-15.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 1.6f, 1.0f, 1.6f });
     quad.color = { 0.20f, 0.50f, 0.22f };
     g_Instances.push_back(quad);
+
+    Instance sphere3;
+    sphere3.mesh = MeshSphere;
+    sphere3.transform = Transform::Translation({ 0.35f, 0.55f, 2.95f }) * Transform::Scale({ 0.55f, 0.55f, 0.55f });
+    sphere3.material = MaterialType::Glass;
+    sphere3.color = { 0.98f, 0.98f, 0.98f };
+    sphere3.ior = 1.5f;
+    sphere3.roughness = 0.0f;
+    g_Instances.push_back(sphere3);
+
+    Instance cube4;
+    cube4.mesh = MeshCube;
+    cube4.transform = Transform::Translation({ -3.3f, 0.45f, 2.3f }) * Transform::RotationY(Radians(-20.0f)) * Transform::Scale({ 0.45f, 0.45f, 0.45f });
+    cube4.material = MaterialType::Glass;
+    cube4.color = { 0.55f, 0.75f, 0.95f };
+    cube4.ior = 1.45f;
+    cube4.extinction = 1.2f;
+    cube4.roughness = 0.35f;
+    g_Instances.push_back(cube4);
+
+    Instance torus2;
+    torus2.mesh = MeshTorus;
+    torus2.transform = Transform::Translation({ -2.0f, 0.144f, 4.3f }) * Transform::RotationY(Radians(-35.0f)) * Transform::Scale({ 0.45f, 0.45f, 0.45f });
+    torus2.material = MaterialType::Glass;
+    torus2.color = { 0.85f, 0.15f, 0.2f };
+    torus2.ior = 1.55f;
+    torus2.extinction = 3.0f;
+    torus2.roughness = 0.0f;
+    g_Instances.push_back(torus2);
+
+    Instance sphere4;
+    sphere4.mesh = MeshSphere;
+    sphere4.transform = Transform::Translation({ 4.4f, 0.6f, 2.7f }) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
+    sphere4.color = { 0.05f, 0.15f, 0.55f };
+    sphere4.ior = 1.974f;
+    sphere4.roughness = 0.15f;
+    g_Instances.push_back(sphere4);
+
+    Instance sphere5;
+    sphere5.mesh = MeshSphere;
+    sphere5.transform = Transform::Translation({ 2.0f, 0.5f, -0.8f }) * Transform::Scale({ 0.5f, 0.5f, 0.5f });
+    sphere5.color = { 0.45f, 0.3f, 0.6f };
+    sphere5.roughness = 0.4f;
+    g_Instances.push_back(sphere5);
+
+    Instance cube5;
+    cube5.mesh = MeshCube;
+    cube5.transform = Transform::Translation({ 5.2f, 1.0f, -2.4f }) * Transform::RotationY(Radians(15.0f)) * Transform::Scale({ 0.35f, 1.0f, 0.35f });
+    cube5.material = MaterialType::Glass;
+    cube5.color = { 0.3f, 0.7f, 0.35f };
+    cube5.ior = 1.52f;
+    cube5.extinction = 2.0f;
+    cube5.roughness = 0.05f;
+    g_Instances.push_back(cube5);
+
+    Instance cylinder1;
+    cylinder1.mesh = MeshCylinder;
+    cylinder1.transform = Transform::Translation({ -1.7f, 1.2f, -3.6f }) * Transform::Scale({ 0.4f, 1.2f, 0.4f });
+    cylinder1.color = { 0.9f, 0.9f, 0.87f };
+    cylinder1.roughness = 0.2f;
+    g_Instances.push_back(cylinder1);
+
+    Instance cylinder2;
+    cylinder2.mesh = MeshCylinder;
+    cylinder2.transform = Transform::Translation({ 3.2f, 0.12f, 4.0f }) * Transform::Scale({ 0.6f, 0.12f, 0.6f });
+    cylinder2.color = { 0.03f, 0.03f, 0.035f };
+    cylinder2.roughness = 0.1f;
+    g_Instances.push_back(cylinder2);
+
+    // Stands on cylinder2, lifted a hair above its top so the two faces don't coincide.
+    Instance cylinder3;
+    cylinder3.mesh = MeshCylinder;
+    cylinder3.transform = Transform::Translation({ 3.2f, 0.645f, 4.0f }) * Transform::Scale({ 0.3f, 0.4f, 0.3f });
+    cylinder3.material = MaterialType::Glass;
+    cylinder3.color = { 0.95f, 0.6f, 0.15f };
+    cylinder3.ior = 1.5f;
+    cylinder3.extinction = 1.5f;
+    cylinder3.roughness = 0.0f;
+    g_Instances.push_back(cylinder3);
+
+    Instance torus3;
+    torus3.mesh = MeshTorus;
+    torus3.transform = Transform::Translation({ -4.8f, 0.73f, 1.0f }) * Transform::RotationY(Radians(60.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 0.55f, 0.55f, 0.55f });
+    torus3.color = { 0.6f, 0.04f, 0.04f };
+    torus3.ior = 1.6f;
+    torus3.roughness = 0.05f;
+    g_Instances.push_back(torus3);
+
+    Instance cylinder4;
+    cylinder4.mesh = MeshCylinder;
+    cylinder4.transform = Transform::Translation({ -0.4f, 0.302f, 4.5f }) * Transform::RotationY(Radians(30.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 0.3f, 0.6f, 0.3f });
+    cylinder4.color = { 0.85f, 0.35f, 0.08f };
+    g_Instances.push_back(cylinder4);
 }
 
 static void BuildBLASes()
@@ -146,7 +242,9 @@ static void BuildBLASes()
         VkAccelerationStructureGeometryKHR& geometry = geometries[i];
         geometry = {};
         geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-        geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        // Opaque unless an instance overrides it, as glass does for shadow rays. Its any-hit shader multiplies the
+        // shadow ray's transmittance per crossing, so it must run once per triangle.
+        geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR | VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
         geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
         geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
         geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
@@ -279,6 +377,11 @@ void BuildTLAS(VkCommandBuffer commandBuffer, size_t frame)
         instance.instanceShaderBindingTableRecordOffset = i * shared::RAY_TYPE_COUNT;
         instance.mask = 0xFF;
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+
+        // Non-opaque so shadow rays run the glass any-hit shader; radiance rays force everything opaque.
+        if (source.material == MaterialType::Glass)
+            instance.flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
+
         instance.accelerationStructureReference = g_Meshes[source.mesh].blas.address;
 
         instances[i] = instance;

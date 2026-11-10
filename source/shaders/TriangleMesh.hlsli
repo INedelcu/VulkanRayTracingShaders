@@ -13,6 +13,7 @@ struct SurfaceHit
     float3 shadingNormal;
     float3 geometricNormal;
     float2 uv;
+    bool   frontFace;
 };
 
 uint3 FetchTriangleIndices(uint primitiveIndex)
@@ -119,7 +120,9 @@ SurfaceHit FetchSurface(BuiltInTriangleIntersectionAttributes attributes)
     if (dot(faceNormal, rayDirection) > 0.0f)
         faceNormal = -faceNormal;
 
-    if (dot(worldNormal, faceNormal) < 0.0f)
+    bool frontFace = dot(worldNormal, faceNormal) >= 0.0f;
+
+    if (!frontFace)
     {
         worldNormal = -worldNormal;
         n0 = -n0;
@@ -137,6 +140,7 @@ SurfaceHit FetchSurface(BuiltInTriangleIntersectionAttributes attributes)
     hit.shadingNormal   = worldNormal;
     hit.geometricNormal = faceNormal;
     hit.uv              = v.uv;
+    hit.frontFace       = frontFace;
 
     return hit;
 }

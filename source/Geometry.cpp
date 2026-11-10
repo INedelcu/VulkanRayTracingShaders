@@ -148,3 +148,63 @@ MeshData CreateTorus(float majorRadius, float minorRadius, uint32_t majorSegment
 
     return mesh;
 }
+
+MeshData CreateCylinder(uint32_t segments)
+{
+    MeshData mesh;
+
+    // Side: a ring at the top (v = 0) and one at the bottom (v = 1), normals pointing away from the axis.
+    for (uint32_t ring = 0; ring < 2; ++ring)
+    {
+        float v = static_cast<float>(ring);
+        float y = 1.0f - 2.0f * v;
+
+        for (uint32_t segment = 0; segment <= segments; ++segment)
+        {
+            float u = static_cast<float>(segment) / segments;
+            float phi = u * 2.0f * kPi;
+
+            Vec3 n(std::cos(phi), 0.0f, -std::sin(phi));
+
+            mesh.vertices.push_back(MakeVertex(Vec3(n.x, y, n.z), n, u, v));
+        }
+    }
+
+    for (uint32_t segment = 0; segment < segments; ++segment)
+    {
+        uint32_t a = segment;
+        uint32_t b = a + segments + 1;
+
+        mesh.indices.insert(mesh.indices.end(), { a, b, a + 1, a + 1, b, b + 1 });
+    }
+
+    // Caps: a fan around each center, with vertices of their own so the rim stays a sharp edge.
+    for (float y : { 1.0f, -1.0f })
+    {
+        uint32_t center = static_cast<uint32_t>(mesh.vertices.size());
+        Vec3 n(0.0f, y, 0.0f);
+
+        mesh.vertices.push_back(MakeVertex(n, n, 0.5f, 0.5f));
+
+        for (uint32_t segment = 0; segment <= segments; ++segment)
+        {
+            float phi = static_cast<float>(segment) / segments * 2.0f * kPi;
+            Vec3 p(std::cos(phi), y, -std::sin(phi));
+
+            mesh.vertices.push_back(MakeVertex(p, n, 0.5f + 0.5f * p.x, 0.5f + 0.5f * p.z));
+        }
+
+        for (uint32_t segment = 0; segment < segments; ++segment)
+        {
+            uint32_t a = center + 1 + segment;
+
+            // Counterclockwise seen from outside, so the two caps wind opposite ways around the axis.
+            if (y > 0.0f)
+                mesh.indices.insert(mesh.indices.end(), { center, a, a + 1 });
+            else
+                mesh.indices.insert(mesh.indices.end(), { center, a + 1, a });
+        }
+    }
+
+    return mesh;
+}

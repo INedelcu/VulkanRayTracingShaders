@@ -11,8 +11,10 @@ static const float3 kSkyZenith = float3(0.07, 0.21, 0.69);
 static const uint   kMaxPathSegments = 8;
 static const float  kExposure        = 0.8f;
 
-// Whether the sun is visible from origin along direction, a point of the sun disc the hit shader picked.
-bool IsSunVisible(float3 origin, float3 direction)
+// The share of sunlight reaching origin along direction, a point of the sun disc the hit shader picked: 0 behind an
+// opaque surface, the glass's tint behind glass, 1 in the open. Glass is non-opaque only for shadow rays, so its
+// any-hit shader filters them without stopping them.
+float3 SunVisibility(float3 origin, float3 direction)
 {
     RayDesc ray;
     ray.Origin    = origin;
@@ -21,10 +23,11 @@ bool IsSunVisible(float3 origin, float3 direction)
     ray.TMax      = 10000.0f;
 
     ShadowPayload payload;
-    payload.visibility = 0.0f;
+    payload.visibility    = 0.0f;
+    payload.transmittance = float3(1.0f, 1.0f, 1.0f);
     TraceRay(AccelStruct, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, 0xFF, RAY_TYPE_SHADOW, RAY_TYPE_COUNT, RAY_TYPE_SHADOW, ray, payload);
 
-    return payload.visibility > 0.0f;
+    return payload.visibility * payload.transmittance;
 }
 
 // Khronos PBR Neutral (2024): base colors stay as authored under neutral light; only the top of the range is compressed.
@@ -88,15 +91,16 @@ float3 TracePath(RayDesc ray, inout uint rng)
         payload.rngState     = rng;
         payload.flags        = flags;
         payload.pathAlpha    = pathAlpha;
-        TraceRay(AccelStruct, RAY_FLAG_NONE, 0xFF, RAY_TYPE_RADIANCE, RAY_TYPE_COUNT, RAY_TYPE_RADIANCE, ray, payload);
+        // Opaque for these rays: glass refracts them in its closest-hit shader, its any-hit shader is for shadow rays.
+        TraceRay(AccelStruct, RAY_FLAG_FORCE_OPAQUE, 0xFF, RAY_TYPE_RADIANCE, RAY_TYPE_COUNT, RAY_TYPE_RADIANCE, ray, payload);
         rng       = payload.rngState;
         flags     = payload.flags;
         pathAlpha = payload.pathAlpha;
 
         radiance += throughput * payload.emitted;
 
-        if (any(payload.direct > 0.0f) && IsSunVisible(payload.origin, payload.sunDirection))
-            radiance += throughput * payload.direct;
+        if (any(payload.direct > 0.0f))
+            radiance += throughput * payload.direct * SunVisibility(payload.origin, payload.sunDirection);
 
         throughput *= payload.weight;
 

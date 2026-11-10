@@ -24,13 +24,15 @@ struct RadiancePayload
 
 struct ShadowPayload
 {
-    float visibility;
+    float  visibility;    // 1 when the ray reached the sky, 0 when an opaque surface stopped it
+    float3 transmittance; // what the glass the ray crossed lets through
 };
 
-static const float  kPi           = 3.14159265f;
-static const float3 kSunDirection = normalize(float3(-0.45f, 0.75f, 0.42f));
-static const float3 kSunColor     = float3(2.2f, 2.1f, 1.9f); // irradiance / pi: what a white surface facing the sun reflects
-static const float  kSunCosRadius = cos(radians(2.0f)); // cosine of the sun disc's angular radius
+static const float  kPi            = 3.14159265f;
+static const float3 kSunDirection  = normalize(float3(-0.45f, 0.75f, 0.42f));
+static const float3 kSunColor      = float3(2.2f, 2.1f, 1.9f); // what a white diffuse surface facing the sun reflects
+static const float3 kSunIrradiance = kSunColor * kPi; // the light falling on a surface facing the sun
+static const float  kSunCosRadius  = cos(radians(2.0f)); // cosine of the sun disc's angular radius
 
 // The GGX width whose microfacets spread a reflection about as wide as the sun disc: half the disc's angular radius,
 // since a tilted microfacet turns the reflection by twice its tilt. Glossy lobes narrower than this are widened to it

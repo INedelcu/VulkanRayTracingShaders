@@ -15,12 +15,25 @@ struct RayTracingPipeline
     VkStridedDeviceAddressRegionKHR callableRegion = {};
 };
 
+enum class MaterialType : uint32_t
+{
+    Diffuse,
+    Glass,
+};
+
 // Per instance hit record
 struct HitRecord
 {
     VkDeviceAddress vertices;
     VkDeviceAddress indices;
     shared::MaterialConstants material;
+};
+
+// One per instance, in instance order. The material type picks the radiance and shadow hit groups.
+struct InstanceHitRecord
+{
+    MaterialType material;
+    HitRecord record;
 };
 
 struct RayTracingShaderModule
@@ -33,6 +46,7 @@ struct RayTracingShaders
 {
     RayTracingShaderModule rayGen;  // RayGen, MissRadiance, MissShadow
     RayTracingShaderModule diffuse; // ClosestHitDiffuse
+    RayTracingShaderModule glass;   // ClosestHitGlass, AnyHitGlassShadow
 };
 
 // Global bindings (global root signature in DXR)
@@ -45,5 +59,5 @@ VkDescriptorSetAndBindingMappingEXT ShaderRecordDataMapping(uint32_t set, uint32
 VkDescriptorSetAndBindingMappingEXT ShaderRecordAddressMapping(uint32_t set, uint32_t binding, VkSpirvResourceTypeFlagsEXT resourceMask, uint32_t recordOffset);
 
 bool CreateRayTracingPipeline(RayTracingPipeline& rtPipeline, const RayTracingShaders& shaders);
-bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<HitRecord>& hitRecords);
+bool CreateShaderBindingTable(RayTracingPipeline& rtPipeline, const std::vector<InstanceHitRecord>& hitRecords);
 void DestroyRayTracingPipeline(RayTracingPipeline& rtPipeline);

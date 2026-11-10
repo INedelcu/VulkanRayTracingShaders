@@ -2,6 +2,7 @@
 
 #include "VulkanBuffers.h"
 #include "MathUtils.h"
+#include "RayTracingPipeline.h"
 
 #include <vector>
 
@@ -24,11 +25,13 @@ struct Mesh
 
 struct Instance
 {
-    uint32_t  mesh = 0;
-    Transform transform;
-    Vec3      color = { 1.0f, 1.0f, 1.0f };
-    float     ior = 1.5f;
-    float     roughness = 1.0f; // 1 is matte, 0 a mirror
+    uint32_t     mesh = 0;
+    Transform    transform;
+    MaterialType material = MaterialType::Diffuse;
+    Vec3         color = { 1.0f, 1.0f, 1.0f };
+    float        ior = 1.5f;
+    float        extinction = 1.0f; // glass tint per unit crossed: 0 = clear, 1 = a color channel at 0 keeps 37%, 3 = keeps 5%
+    float        roughness = 1.0f; // 1 is matte, 0 a mirror
 };
 
 extern std::vector<Mesh>     g_Meshes;
