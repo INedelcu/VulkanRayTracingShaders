@@ -16,7 +16,7 @@ struct RadiancePayload
     float3 direction;       // bounce ray direction
     uint   rngState;
     uint   flags;           // kFlag*: in for this ray, out for the bounce ray
-    float  pathAlpha;       // widest GGX alpha the path has bounced off, 1 after diffuse: glossy sun terms widen to it, so a
+    float  pathAlpha;       // widest GGX alpha the path has bounced off, 1 after diffuse: glossy sun terms widen with it, so a
                             // glint seen through frosted glass is a soft glow instead of sparkles ("Path Space Regularization
                             // for Holistic and Robust Light Transport", Kaplanyan and Dachsbacher 2013). In for this ray, out
                             // for the bounce ray.
@@ -40,6 +40,16 @@ static const float  kSunCosRadius  = cos(radians(2.0f)); // cosine of the sun di
 // it, rarely enough that the glint shows as stray sparkles for minutes; widened, it is a disc-sized glint of about the
 // same energy.
 static const float kSunAlpha = 0.5f * sqrt(1.0f - kSunCosRadius * kSunCosRadius);
+
+// The GGX width of a glossy lobe's sun term: at least the sun disc's, and at least the roughness of the roughest surface
+// the path came through, the square root of its alpha. A rough bounce finds a glint only when its random direction
+// lands on the small patch that reflects the sun, so in frosted glass and rough reflections the glint shows as
+// sparkles. The wider the glint, the larger and dimmer that patch. Roughness, wider than alpha, keeps the patch large
+// enough for metal glints too, about 25 times brighter than the coat's.
+float SunLobeAlpha(float alpha, float pathAlpha)
+{
+    return max(alpha, max(kSunAlpha, sqrt(pathAlpha)));
+}
 
 // "A Fast and Robust Method for Avoiding Self-Intersection", Ray Tracing Gems 2019.
 float3 OffsetRayOrigin(float3 p, float3 n)

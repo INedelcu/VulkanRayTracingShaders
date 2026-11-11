@@ -166,7 +166,7 @@ static bool LoadRayTracingShader(const char* name, RayTracingShaderModule& shade
 
 static void DestroyRayTracingShaders(RayTracingShaders& shaders)
 {
-    for (RayTracingShaderModule* shader : { &shaders.rayGen, &shaders.diffuse, &shaders.glass })
+    for (RayTracingShaderModule* shader : { &shaders.rayGen, &shaders.diffuse, &shaders.metal, &shaders.glass })
     {
         if (shader->module != VK_NULL_HANDLE)
             vkDestroyShaderModule(g_VkDevice, shader->module, nullptr);
@@ -210,7 +210,8 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 
     RayTracingShaders shaders;
 
-    if (!LoadRayTracingShader("RayGen", shaders.rayGen) || !LoadRayTracingShader("MaterialDiffuse", shaders.diffuse) || !LoadRayTracingShader("MaterialGlass", shaders.glass))
+    if (!LoadRayTracingShader("RayGen", shaders.rayGen) || !LoadRayTracingShader("MaterialDiffuse", shaders.diffuse) || !LoadRayTracingShader("MaterialMetal", shaders.metal) ||
+        !LoadRayTracingShader("MaterialGlass", shaders.glass))
     {
         DestroyRayTracingShaders(shaders);
         MessageBox(hWnd, "Couldn't load the ray tracing shaders from the shaders folder. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);

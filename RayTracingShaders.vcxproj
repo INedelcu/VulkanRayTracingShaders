@@ -118,6 +118,7 @@
   <ItemGroup>
     <CustomBuild Include="source\shaders\MaterialDiffuse.hlsl" />
     <CustomBuild Include="source\shaders\MaterialGlass.hlsl" />
+    <CustomBuild Include="source\shaders\MaterialMetal.hlsl" />
     <CustomBuild Include="source\shaders\RayGen.hlsl" />
   </ItemGroup>
   <ItemGroup>

@@ -98,11 +98,13 @@ static void CreateInstances()
     cube2.color = { 0.55f, 0.36f, 0.17f };
     g_Instances.push_back(cube2);
 
-    Instance cube3;
-    cube3.mesh = MeshCube;
-    cube3.transform = Transform::Translation({ 3.6f, 0.5f, -1.0f }) * Transform::RotationY(Radians(-30.0f)) * Transform::Scale({ 0.5f, 0.5f, 0.5f });
-    cube3.color = { 0.76f, 0.76f, 0.76f };
-    g_Instances.push_back(cube3);
+    Instance sphere0;
+    sphere0.mesh = MeshSphere;
+    sphere0.transform = Transform::Translation({ 3.6f, 1.0f, -1.0f });
+    sphere0.color = { 1.0f, 1.0f, 1.0f };
+    sphere0.material = MaterialType::Metal;
+    sphere0.roughness = 0.15f;
+    g_Instances.push_back(sphere0);
 
     Instance sphere1;
     sphere1.mesh = MeshSphere;
@@ -224,6 +226,46 @@ static void CreateInstances()
     cylinder4.transform = Transform::Translation({ -0.4f, 0.302f, 4.5f }) * Transform::RotationY(Radians(30.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 0.3f, 0.6f, 0.3f });
     cylinder4.color = { 0.85f, 0.35f, 0.08f };
     g_Instances.push_back(cylinder4);
+
+    Instance sphere6;
+    sphere6.mesh = MeshSphere;
+    sphere6.transform = Transform::Translation({ 1.6f, 0.45f, 4.8f }) * Transform::Scale({ 0.45f, 0.45f, 0.45f });
+    sphere6.material = MaterialType::Metal;
+    sphere6.color = { 1.0f, 0.766f, 0.336f };
+    sphere6.roughness = 0.1f;
+    g_Instances.push_back(sphere6);
+
+    Instance cube6;
+    cube6.mesh = MeshCube;
+    cube6.transform = Transform::Translation({ -3.9f, 0.4f, 3.6f }) * Transform::RotationY(Radians(45.0f)) * Transform::Scale({ 0.4f, 0.4f, 0.4f });
+    cube6.material = MaterialType::Metal;
+    cube6.color = { 0.562f, 0.565f, 0.578f };
+    cube6.roughness = 0.0f;
+    g_Instances.push_back(cube6);
+
+    Instance torus4;
+    torus4.mesh = MeshTorus;
+    torus4.transform = Transform::Translation({ 7.5f, 0.795f, -3.5f }) * Transform::RotationY(Radians(-50.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
+    torus4.material = MaterialType::Metal;
+    torus4.color = { 0.955f, 0.638f, 0.538f };
+    torus4.roughness = 0.3f;
+    g_Instances.push_back(torus4);
+
+    Instance cube7;
+    cube7.mesh = MeshCube;
+    cube7.transform = Transform::Translation({ 9.0f, 0.6f, -2.5f }) * Transform::RotationY(Radians(30.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
+    cube7.material = MaterialType::Metal;
+    cube7.color = { 0.549f, 0.556f, 0.554f };
+    cube7.roughness = 0.0f;
+    g_Instances.push_back(cube7);
+
+    Instance sphere7;
+    sphere7.mesh = MeshSphere;
+    sphere7.transform = Transform::Translation({ -10.5f, 0.8f, -4.5f }) * Transform::Scale({ 0.8f, 0.8f, 0.8f });
+    sphere7.material = MaterialType::Metal;
+    sphere7.color = { 0.972f, 0.960f, 0.915f };
+    sphere7.roughness = 0.2f;
+    g_Instances.push_back(sphere7);
 }
 
 static void BuildBLASes()

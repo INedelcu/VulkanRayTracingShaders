@@ -18,6 +18,7 @@ struct RayTracingPipeline
 enum class MaterialType : uint32_t
 {
     Diffuse,
+    Metal,
     Glass,
 };
 
@@ -46,6 +47,7 @@ struct RayTracingShaders
 {
     RayTracingShaderModule rayGen;  // RayGen, MissRadiance, MissShadow
     RayTracingShaderModule diffuse; // ClosestHitDiffuse
+    RayTracingShaderModule metal;   // ClosestHitMetal
     RayTracingShaderModule glass;   // ClosestHitGlass, AnyHitGlassShadow
 };
 

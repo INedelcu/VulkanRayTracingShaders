@@ -23,13 +23,13 @@ void ClosestHitDiffuse(inout RadiancePayload payload, in BuiltInTriangleIntersec
     float3 n = dot(hit.shadingNormal, v) > 0.0f ? hit.shadingNormal : hit.geometricNormal;
 
     // The sun through a shadow ray toward a random point of its disc, for both lobes: bounces don't see the disc.
-    // Each lobe reflects the sun's irradiance times its BRDF times cos. A coat sharper than the disc is widened to it
-    // here (kSunAlpha), and to the roughest surface the path came through (pathAlpha), not in its bounces. Without
-    // multiple importance sampling, the densities go unused.
+    // Each lobe reflects the sun's irradiance times its BRDF times cos. A coat sharper than the disc, or than the
+    // roughest surface the path came through, is widened here (SunLobeAlpha), not in its bounces. Without multiple
+    // importance sampling, the densities go unused.
     payload.sunDirection = SampleSunDirection(payload.rngState);
 
     float  coatSunPdf;
-    float3 coatSun = EvaluateSpecularGGX(v, payload.sunDirection, n, f0, max(alpha, max(kSunAlpha, payload.pathAlpha)), coatSunPdf);
+    float3 coatSun = EvaluateSpecularGGX(v, payload.sunDirection, n, f0, SunLobeAlpha(alpha, payload.pathAlpha), coatSunPdf);
 
     // After a diffuse bounce the coat's glint would light that surface as a caustic, found too rarely to converge
     // without fireflies: like metal and glass, leave it out on those paths.
