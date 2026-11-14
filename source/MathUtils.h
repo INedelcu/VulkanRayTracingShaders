@@ -17,6 +17,15 @@ struct Vec3
     Vec3& operator+=(const Vec3& o) { x += o.x; y += o.y; z += o.z; return *this; }
 };
 
+// All four components are explicit, so a braced list of three is a Vec3 and one of four a Vec4.
+struct Vec4
+{
+    float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;
+
+    Vec4() = default;
+    constexpr Vec4(float x_, float y_, float z_, float w_) : x(x_), y(y_), z(z_), w(w_) {}
+};
+
 inline float Dot(const Vec3& a, const Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 inline Vec3  Cross(const Vec3& a, const Vec3& b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
 inline float Length(const Vec3& v) { return std::sqrt(Dot(v, v)); }

@@ -5,8 +5,7 @@
 #include "GpuTimer.h"
 #include "RayTracingPipeline.h"
 #include "RayTracingScene.h"
-#include "ShaderReflection.h"
-#include "Shaders.h"
+#include "RayTracingShader.h"
 #include "VulkanDevice.h"
 #include "VulkanImages.h"
 
@@ -30,7 +29,10 @@ Image              g_AccumulationImage;
 Image              g_OutputImage;
 uint32_t           g_AccumulationImageSlot = UINT32_MAX;
 uint32_t           g_OutputImageSlot = UINT32_MAX;
-RayTracingPipeline g_RayTracingPipeline;
+RayTracingGlobalResources g_GlobalResources;
+RayTracingRayGenShader    g_RayGenShader;
+RayTracingHitRecords      g_HitRecords;
+RayTracingPipeline        g_RayTracingPipeline;
 OrbitCamera        g_Camera;
 GpuTimer           g_TraceTimer;
 
@@ -104,75 +106,30 @@ static bool UpdateRenderTargets()
            CreateRenderTarget(g_OutputImage, g_OutputImageSlot, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "Output");
 }
 
-static std::vector<VkDescriptorSetAndBindingMappingEXT> CreateMappings(const ShaderReflection& reflection)
+// Where the shaders find the resources they all share, by name.
+static void CreateGlobalResources()
 {
-    std::vector<VkDescriptorSetAndBindingMappingEXT> mappings;
-
-    if (const ShaderResourceBinding* frame = reflection.Find("Frame"))
-        mappings.push_back(PushDataMapping(frame->set, frame->binding, offsetof(PushData, frame)));
+    g_GlobalResources.AddPushData("Frame", offsetof(PushData, frame), sizeof(shared::FrameConstants));
 
     // Use vkCmdPushDataEXT to bind the TLAS to shader. Buffers and TLASes can write their addresses into push data for shader binding.
-    if (const ShaderResourceBinding* accelStruct = reflection.Find("AccelStruct"))
-        mappings.push_back(PushAddressMapping(accelStruct->set, accelStruct->binding, VK_SPIRV_RESOURCE_TYPE_ACCELERATION_STRUCTURE_BIT_EXT, offsetof(PushData, accelStruct)));
+    g_GlobalResources.AddPushAddress("AccelStruct", offsetof(PushData, accelStruct));
 
     // Write the accumulation and output image descriptors into the descriptor heap and use their byte offsets to specify where the descriptors are in the descriptor heap.
     // Images can't be bound using push data.
-    if (const ShaderResourceBinding* accumulation = reflection.Find("Accumulation"))
-        mappings.push_back(HeapConstantOffsetMapping(accumulation->set, accumulation->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_AccumulationImageSlot)));
+    g_GlobalResources.AddHeapResource("Accumulation", g_ResourceHeap.SlotOffset(g_AccumulationImageSlot));
+    g_GlobalResources.AddHeapResource("Output", g_ResourceHeap.SlotOffset(g_OutputImageSlot));
 
-    if (const ShaderResourceBinding* output = reflection.Find("Output"))
-        mappings.push_back(HeapConstantOffsetMapping(output->set, output->binding, VK_SPIRV_RESOURCE_TYPE_READ_WRITE_IMAGE_BIT_EXT, g_ResourceHeap.SlotOffset(g_OutputImageSlot)));
-
-    // Also use VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT because of https://github.com/microsoft/DirectXShaderCompiler/issues/8492
-    const VkSpirvResourceTypeFlagsEXT storageBufferMask = VK_SPIRV_RESOURCE_TYPE_READ_ONLY_STORAGE_BUFFER_BIT_EXT | VK_SPIRV_RESOURCE_TYPE_READ_WRITE_STORAGE_BUFFER_BIT_EXT;
-
-    if (const ShaderResourceBinding* vertices = reflection.Find("Vertices"))
-        mappings.push_back(ShaderRecordAddressMapping(vertices->set, vertices->binding, storageBufferMask, offsetof(HitRecord, vertices)));
-
-    if (const ShaderResourceBinding* indices = reflection.Find("Indices"))
-        mappings.push_back(ShaderRecordAddressMapping(indices->set, indices->binding, storageBufferMask, offsetof(HitRecord, indices)));
-
-    if (const ShaderResourceBinding* material = reflection.Find("Material"))
-        mappings.push_back(ShaderRecordDataMapping(material->set, material->binding, offsetof(HitRecord, material)));
-
-    return mappings;
+    // A texture a shader reads from its own record is one of these slots, held in the record as the slot's index:
+    // that turns into the offset of its descriptor with the size of a slot.
+    g_GlobalResources.SetHeapSlotSize(g_ResourceHeap.SlotSize());
 }
 
-static bool LoadRayTracingShader(const char* name, RayTracingShaderModule& shader)
+// Brings the pipeline and its shader binding table up to date with the scene. They are kept as long as they fit it.
+static bool UpdateRayTracingPipeline()
 {
-    const std::vector<uint32_t> spirv = LoadSpirv(name);
+    GetHitRecords(g_HitRecords);
 
-    if (spirv.empty())
-        return false;
-
-    shader.module = CreateShaderModule(spirv, name);
-
-    if (shader.module == VK_NULL_HANDLE)
-        return false;
-
-    const ShaderReflection reflection(spirv);
-
-    for (const ShaderResourceBinding& binding : reflection.Bindings())
-    {
-        char message[256];
-        _snprintf_s(message, _TRUNCATE, "%s.spv: %s = set %u, binding %u\n", name, binding.name.c_str(), binding.set, binding.binding);
-        OutputDebugString(message);
-    }
-
-    shader.mappings = CreateMappings(reflection);
-
-    return true;
-}
-
-static void DestroyRayTracingShaders(RayTracingShaders& shaders)
-{
-    for (RayTracingShaderModule* shader : { &shaders.rayGen, &shaders.diffuse, &shaders.metal, &shaders.glass })
-    {
-        if (shader->module != VK_NULL_HANDLE)
-            vkDestroyShaderModule(g_VkDevice, shader->module, nullptr);
-
-        shader->module = VK_NULL_HANDLE;
-    }
+    return g_RayTracingPipeline.Update(g_RayGenShader, g_HitRecords);
 }
 
 bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
@@ -182,10 +139,6 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
 
     if (!InitializeVulkan(hInstance, hWnd))
         return false;
-
-#ifdef VK_KHR_acceleration_structure
-    CreateRayTracingScene();
-#endif
 
     if (!g_ResourceHeap.Create(DescriptorHeap::Type::Resource, 1024, "Resource heap"))
     {
@@ -208,45 +161,21 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
         return false;
     }
 
-    RayTracingShaders shaders;
+    CreateGlobalResources();
 
-    if (!LoadRayTracingShader("RayGen", shaders.rayGen) || !LoadRayTracingShader("MaterialDiffuse", shaders.diffuse) || !LoadRayTracingShader("MaterialMetal", shaders.metal) ||
-        !LoadRayTracingShader("MaterialGlass", shaders.glass))
+    const char* missEntryPoints[shared::RAY_TYPE_COUNT];
+    missEntryPoints[shared::RAY_TYPE_RADIANCE] = "MissRadiance";
+    missEntryPoints[shared::RAY_TYPE_SHADOW] = "MissShadow";
+
+    if (!g_RayGenShader.Create("RayGen", "RayGen", missEntryPoints, g_GlobalResources) || !CreateRayTracingScene(g_GlobalResources))
     {
-        DestroyRayTracingShaders(shaders);
         MessageBox(hWnd, "Couldn't load the ray tracing shaders from the shaders folder. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
     }
 
-    const bool pipelineCreated = CreateRayTracingPipeline(g_RayTracingPipeline, shaders);
-
-    DestroyRayTracingShaders(shaders);
-
-    if (!pipelineCreated)
+    if (!UpdateRayTracingPipeline())
     {
-        MessageBox(hWnd, "Couldn't create the ray tracing pipeline. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
-        return false;
-    }
-
-    std::vector<InstanceHitRecord> hitRecords;
-
-    for (const Instance& instance : g_Instances)
-    {
-        InstanceHitRecord hitRecord = {};
-        hitRecord.material = instance.material;
-        hitRecord.record.vertices = g_Meshes[instance.mesh].vertexBuffer.address;
-        hitRecord.record.indices = g_Meshes[instance.mesh].indexBuffer.address;
-        hitRecord.record.material.color = { instance.color.x, instance.color.y, instance.color.z, 0.0f };
-        hitRecord.record.material.ior = instance.ior;
-        hitRecord.record.material.extinction = instance.extinction;
-        hitRecord.record.material.roughness = instance.roughness;
-
-        hitRecords.push_back(hitRecord);
-    }
-
-    if (!CreateShaderBindingTable(g_RayTracingPipeline, hitRecords))
-    {
-        MessageBox(hWnd, "Couldn't create the shader binding table. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        MessageBox(hWnd, "Couldn't create the ray tracing pipeline and its shader binding table. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
     }
 
@@ -286,14 +215,13 @@ void ShutdownRenderer()
     }
 
     g_TraceTimer.Destroy();
-    DestroyRayTracingPipeline(g_RayTracingPipeline);
+    g_RayTracingPipeline.Destroy();
+    g_RayGenShader.Destroy();
     DestroyImage(g_AccumulationImage);
     DestroyImage(g_OutputImage);
     g_ResourceHeap.Destroy();
 
-#ifdef VK_KHR_acceleration_structure
     DestroyRayTracingScene();
-#endif
 
     ShutdownVulkan();
 }
@@ -321,7 +249,7 @@ static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
         g_WindowResized = false;
     }
 
-    if (!UpdateRenderTargets())
+    if (!UpdateRenderTargets() || !UpdateRayTracingPipeline())
         return VK_NULL_HANDLE;
 
     VkResult result = vkAcquireNextImageKHR(g_VkDevice, g_VkSwapChain, (uint64_t)-1, g_VkImageAvailableSemaphore[g_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
@@ -353,9 +281,7 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
 {
     g_ResourceHeap.Bind(cmdBuffer);
 
-#ifdef VK_KHR_acceleration_structure
     BuildTLAS(cmdBuffer, g_CurrentFrame);
-#endif
 
     // The accumulation image stays in GENERAL: this barrier orders the previous frame's writes before this frame's reads.
     const VkImageLayout accumulationLayout = g_AccumulatedFrames == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
@@ -366,7 +292,7 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
     TransitionImage(cmdBuffer, g_OutputImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
-    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, g_RayTracingPipeline.pipeline);
+    g_RayTracingPipeline.Bind(cmdBuffer);
 
     PushData pushData = { g_Camera.MakeFrameConstants(g_OutputImage.extent.width, g_OutputImage.extent.height), g_Tlas.address };
     pushData.frame.frameIndex = g_FrameIndex;
@@ -383,8 +309,7 @@ static void RenderFrame(VkCommandBuffer cmdBuffer)
 
     g_TraceTimer.Begin(cmdBuffer, (uint32_t)g_CurrentFrame);
 
-    vkCmdTraceRaysKHR(cmdBuffer, &g_RayTracingPipeline.raygenRegion, &g_RayTracingPipeline.missRegion, &g_RayTracingPipeline.hitRegion, &g_RayTracingPipeline.callableRegion,
-                      g_OutputImage.extent.width, g_OutputImage.extent.height, 1);
+    g_RayTracingPipeline.TraceRays(cmdBuffer, g_OutputImage.extent.width, g_OutputImage.extent.height);
 
     g_TraceTimer.End(cmdBuffer, (uint32_t)g_CurrentFrame);
 

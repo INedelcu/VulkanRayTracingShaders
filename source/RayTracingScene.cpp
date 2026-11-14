@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <iterator>
 #include <vector>
 
@@ -16,12 +17,37 @@ enum MeshId : uint8_t
     MeshCylinder
 };
 
-std::vector<Mesh>       g_Meshes;
-std::vector<Instance>   g_Instances;
-std::vector<Buffer>     g_InstanceBuffers; // one per frame in flight, host visible so the CPU can rewrite it while older frames are still building
-Buffer                  g_TlasScratch;
-VkDeviceAddress         g_TlasScratchAddress = 0;
-AccelerationStructure   g_Tlas;
+// A mesh and the acceleration structure built over it, which the instances of the mesh refer to.
+struct Mesh
+{
+    Buffer                vertexBuffer;
+    Buffer                indexBuffer;
+    uint32_t              vertexCount = 0;
+    uint32_t              indexCount  = 0;
+    AccelerationStructure blas;
+};
+
+// An instance of a mesh, with the material whose surface shader its hits run. Several instances can share one
+// material; without a material, or with one that has no shader, an instance stops the rays that hit it and nothing
+// else. This is what the TLAS is built from and what the hit records are made of.
+struct InstanceDescription
+{
+    uint32_t                  mesh = 0;           // index into g_Meshes
+    Transform                 transform;
+    const RayTracingMaterial* material = nullptr; // one of g_Materials
+};
+
+static std::vector<Mesh>                g_Meshes;
+static std::deque<RayTracingMaterial>   g_Materials; // a deque so that adding one leaves the instances' pointers into it valid
+static std::vector<InstanceDescription> g_Instances;
+static std::vector<Buffer>              g_InstanceBuffers; // one per frame in flight, host visible so the CPU can rewrite it while older frames are still building
+static Buffer                           g_TlasScratch;
+static VkDeviceAddress                  g_TlasScratchAddress = 0;
+AccelerationStructure                   g_Tlas;
+
+static RayTracingSurfaceShader g_DiffuseShader;
+static RayTracingSurfaceShader g_MetalShader;
+static RayTracingSurfaceShader g_GlassShader;
 
 static AccelerationStructure CreateAccelerationStructure(VkAccelerationStructureTypeKHR type, VkDeviceSize size, const char* name)
 {
@@ -78,194 +104,245 @@ static void CreateMeshes()
     }
 }
 
+// Radiance rays run a surface's closest-hit shader. Shadow rays only need to know whether a surface stops them, which
+// takes no shader; glass filters them in an any-hit shader instead.
+static bool CreateSurfaceShaders(const RayTracingGlobalResources& globals)
+{
+    RayTracingHitGroup diffuse[shared::RAY_TYPE_COUNT];
+    diffuse[shared::RAY_TYPE_RADIANCE].closestHit = "ClosestHitDiffuse";
+
+    RayTracingHitGroup metal[shared::RAY_TYPE_COUNT];
+    metal[shared::RAY_TYPE_RADIANCE].closestHit = "ClosestHitMetal";
+
+    RayTracingHitGroup glass[shared::RAY_TYPE_COUNT];
+    glass[shared::RAY_TYPE_RADIANCE].closestHit = "ClosestHitGlass";
+    glass[shared::RAY_TYPE_SHADOW].anyHit = "AnyHitGlassShadow";
+
+    if (!g_DiffuseShader.Create("MaterialDiffuse", diffuse, globals) || !g_MetalShader.Create("MaterialMetal", metal, globals) || !g_GlassShader.Create("MaterialGlass", glass, globals))
+        return false;
+
+    // What a material of each shader is before it sets anything: a white matte surface, and a dielectric coat or body
+    // of the index of glass. A property a material doesn't set and a shader has no default for is left zero, which
+    // ior can't be: a coat of index 0 reflects everything.
+    g_DiffuseShader.DefaultProperties().SetVector("color", { 1.0f, 1.0f, 1.0f });
+    g_DiffuseShader.DefaultProperties().SetFloat("ior", 1.5f);
+    g_DiffuseShader.DefaultProperties().SetFloat("roughness", 1.0f);
+
+    g_MetalShader.DefaultProperties().SetVector("color", { 1.0f, 1.0f, 1.0f });
+    g_MetalShader.DefaultProperties().SetFloat("roughness", 1.0f);
+
+    g_GlassShader.DefaultProperties().SetVector("color", { 1.0f, 1.0f, 1.0f });
+    g_GlassShader.DefaultProperties().SetFloat("ior", 1.5f);
+    g_GlassShader.DefaultProperties().SetFloat("extinction", 1.0f);
+    g_GlassShader.DefaultProperties().SetFloat("roughness", 1.0f);
+
+    return true;
+}
+
+// Adds a material of the shader, holding the values that shader gives a material of its own. Returns it to be filled
+// in, e.g. AddMaterial(g_GlassShader).SetFloat("ior", 1.7f), and to be pointed at by the instances that use it.
+static RayTracingMaterial& AddMaterial(const RayTracingSurfaceShader& shader)
+{
+    return g_Materials.emplace_back(&shader);
+}
+
+static void AddInstance(const InstanceDescription& description)
+{
+    g_Instances.push_back(description);
+}
+
+// Each instance sets only the properties that differ from the defaults its shader gives a material: a diffuse or a
+// glass surface is white, with a coat of index 1.5 and a matte base, unless it says otherwise.
 static void CreateInstances()
 {
-    Instance ground;
+    InstanceDescription ground;
     ground.mesh = MeshQuad;
     ground.transform = Transform::Scale({ 16.0f, 1.0f, 16.0f });
-    ground.color = { 0.50f, 0.47f, 0.43f };
-    g_Instances.push_back(ground);
+    ground.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.50f, 0.47f, 0.43f });
+    AddInstance(ground);
 
-    Instance cube1;
+    InstanceDescription cube1;
     cube1.mesh = MeshCube;
     cube1.transform = Transform::Translation({ -3.2f, 1.0f, -0.6f }) * Transform::RotationY(Radians(25.0f));
-    cube1.color = { 0.50f, 0.16f, 0.10f };
-    g_Instances.push_back(cube1);
+    cube1.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.50f, 0.16f, 0.10f });
+    AddInstance(cube1);
 
-    Instance cube2;
+    InstanceDescription cube2;
     cube2.mesh = MeshCube;
     cube2.transform = Transform::Translation({ -3.2f, 2.6f, -0.6f }) * Transform::RotationY(Radians(55.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
-    cube2.color = { 0.55f, 0.36f, 0.17f };
-    g_Instances.push_back(cube2);
+    cube2.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.55f, 0.36f, 0.17f });
+    AddInstance(cube2);
 
-    Instance sphere0;
+    InstanceDescription sphere0;
     sphere0.mesh = MeshSphere;
     sphere0.transform = Transform::Translation({ 3.6f, 1.0f, -1.0f });
-    sphere0.color = { 1.0f, 1.0f, 1.0f };
-    sphere0.material = MaterialType::Metal;
-    sphere0.roughness = 0.15f;
-    g_Instances.push_back(sphere0);
+    sphere0.material = &AddMaterial(g_MetalShader).SetFloat("roughness", 0.15f);
+    AddInstance(sphere0);
 
-    Instance sphere1;
+    InstanceDescription sphere1;
     sphere1.mesh = MeshSphere;
     sphere1.transform = Transform::Translation({ -1.2f, 0.75f, 2.6f }) * Transform::Scale({ 0.75f, 0.75f, 0.75f });
-    sphere1.color = { 0.0f, 0.3f, 0.0f };
-    sphere1.roughness = 0.0f;
-    g_Instances.push_back(sphere1);
+    sphere1.material = &AddMaterial(g_DiffuseShader)
+        .SetVector("color", { 0.0f, 0.3f, 0.0f })
+        .SetFloat("roughness", 0.0f);
+    AddInstance(sphere1);
 
-    Instance sphere2;
+    InstanceDescription sphere2;
     sphere2.mesh = MeshSphere;
     sphere2.transform = Transform::Translation({ 0.2f, 1.3f, -1.4f }) * Transform::Scale({ 1.3f, 1.3f, 1.3f });
-    sphere2.material = MaterialType::Glass;
-    sphere2.color = { 0.92f, 0.86f, 0.19f };
-    sphere2.ior = 1.7f;
-    sphere2.roughness = 0.25f;
-    g_Instances.push_back(sphere2);
+    sphere2.material = &AddMaterial(g_GlassShader)
+        .SetVector("color", { 0.92f, 0.86f, 0.19f })
+        .SetFloat("ior", 1.7f)
+        .SetFloat("roughness", 0.25f);
+    AddInstance(sphere2);
 
-    Instance torus;
+    InstanceDescription torus;
     torus.mesh = MeshTorus;
     torus.transform = Transform::Translation({ 2.6f, 0.32f, 1.6f }) * Transform::RotationY(Radians(20.0f));
-    torus.color = { 0.80f, 0.55f, 0.15f };
-    g_Instances.push_back(torus);
+    torus.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.80f, 0.55f, 0.15f });
+    AddInstance(torus);
 
-    Instance quad;
+    InstanceDescription quad;
     quad.mesh = MeshQuad;
     quad.transform = Transform::Translation({ 1.8f, 1.6f, -4.2f }) * Transform::RotationY(Radians(-15.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 1.6f, 1.0f, 1.6f });
-    quad.color = { 0.20f, 0.50f, 0.22f };
-    g_Instances.push_back(quad);
+    quad.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.20f, 0.50f, 0.22f });
+    AddInstance(quad);
 
-    Instance sphere3;
+    InstanceDescription sphere3;
     sphere3.mesh = MeshSphere;
     sphere3.transform = Transform::Translation({ 0.35f, 0.55f, 2.95f }) * Transform::Scale({ 0.55f, 0.55f, 0.55f });
-    sphere3.material = MaterialType::Glass;
-    sphere3.color = { 0.98f, 0.98f, 0.98f };
-    sphere3.ior = 1.5f;
-    sphere3.roughness = 0.0f;
-    g_Instances.push_back(sphere3);
+    sphere3.material = &AddMaterial(g_GlassShader)
+        .SetVector("color", { 0.98f, 0.98f, 0.98f })
+        .SetFloat("roughness", 0.0f);
+    AddInstance(sphere3);
 
-    Instance cube4;
+    InstanceDescription cube4;
     cube4.mesh = MeshCube;
     cube4.transform = Transform::Translation({ -3.3f, 0.45f, 2.3f }) * Transform::RotationY(Radians(-20.0f)) * Transform::Scale({ 0.45f, 0.45f, 0.45f });
-    cube4.material = MaterialType::Glass;
-    cube4.color = { 0.55f, 0.75f, 0.95f };
-    cube4.ior = 1.45f;
-    cube4.extinction = 1.2f;
-    cube4.roughness = 0.35f;
-    g_Instances.push_back(cube4);
+    cube4.material = &AddMaterial(g_GlassShader)
+        .SetVector("color", { 0.55f, 0.75f, 0.95f })
+        .SetFloat("ior", 1.45f)
+        .SetFloat("extinction", 1.2f)
+        .SetFloat("roughness", 0.35f);
+    AddInstance(cube4);
 
-    Instance torus2;
+    InstanceDescription torus2;
     torus2.mesh = MeshTorus;
     torus2.transform = Transform::Translation({ -2.0f, 0.144f, 4.3f }) * Transform::RotationY(Radians(-35.0f)) * Transform::Scale({ 0.45f, 0.45f, 0.45f });
-    torus2.material = MaterialType::Glass;
-    torus2.color = { 0.85f, 0.15f, 0.2f };
-    torus2.ior = 1.55f;
-    torus2.extinction = 3.0f;
-    torus2.roughness = 0.0f;
-    g_Instances.push_back(torus2);
+    torus2.material = &AddMaterial(g_GlassShader)
+        .SetVector("color", { 0.85f, 0.15f, 0.2f })
+        .SetFloat("ior", 1.55f)
+        .SetFloat("extinction", 3.0f)
+        .SetFloat("roughness", 0.0f);
+    AddInstance(torus2);
 
-    Instance sphere4;
+    InstanceDescription sphere4;
     sphere4.mesh = MeshSphere;
     sphere4.transform = Transform::Translation({ 4.4f, 0.6f, 2.7f }) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
-    sphere4.color = { 0.05f, 0.15f, 0.55f };
-    sphere4.ior = 1.974f;
-    sphere4.roughness = 0.15f;
-    g_Instances.push_back(sphere4);
+    sphere4.material = &AddMaterial(g_DiffuseShader)
+        .SetVector("color", { 0.05f, 0.15f, 0.55f })
+        .SetFloat("ior", 1.974f)
+        .SetFloat("roughness", 0.15f);
+    AddInstance(sphere4);
 
-    Instance sphere5;
+    InstanceDescription sphere5;
     sphere5.mesh = MeshSphere;
     sphere5.transform = Transform::Translation({ 2.0f, 0.5f, -0.8f }) * Transform::Scale({ 0.5f, 0.5f, 0.5f });
-    sphere5.color = { 0.45f, 0.3f, 0.6f };
-    sphere5.roughness = 0.4f;
-    g_Instances.push_back(sphere5);
+    sphere5.material = &AddMaterial(g_DiffuseShader)
+        .SetVector("color", { 0.45f, 0.3f, 0.6f })
+        .SetFloat("roughness", 0.4f);
+    AddInstance(sphere5);
 
-    Instance cube5;
+    InstanceDescription cube5;
     cube5.mesh = MeshCube;
     cube5.transform = Transform::Translation({ 5.2f, 1.0f, -2.4f }) * Transform::RotationY(Radians(15.0f)) * Transform::Scale({ 0.35f, 1.0f, 0.35f });
-    cube5.material = MaterialType::Glass;
-    cube5.color = { 0.3f, 0.7f, 0.35f };
-    cube5.ior = 1.52f;
-    cube5.extinction = 2.0f;
-    cube5.roughness = 0.05f;
-    g_Instances.push_back(cube5);
+    cube5.material = &AddMaterial(g_GlassShader)
+        .SetVector("color", { 0.3f, 0.7f, 0.35f })
+        .SetFloat("ior", 1.52f)
+        .SetFloat("extinction", 2.0f)
+        .SetFloat("roughness", 0.05f);
+    AddInstance(cube5);
 
-    Instance cylinder1;
+    InstanceDescription cylinder1;
     cylinder1.mesh = MeshCylinder;
     cylinder1.transform = Transform::Translation({ -1.7f, 1.2f, -3.6f }) * Transform::Scale({ 0.4f, 1.2f, 0.4f });
-    cylinder1.color = { 0.9f, 0.9f, 0.87f };
-    cylinder1.roughness = 0.2f;
-    g_Instances.push_back(cylinder1);
+    cylinder1.material = &AddMaterial(g_DiffuseShader)
+        .SetVector("color", { 0.9f, 0.9f, 0.87f })
+        .SetFloat("roughness", 0.2f);
+    AddInstance(cylinder1);
 
-    Instance cylinder2;
+    InstanceDescription cylinder2;
     cylinder2.mesh = MeshCylinder;
     cylinder2.transform = Transform::Translation({ 3.2f, 0.12f, 4.0f }) * Transform::Scale({ 0.6f, 0.12f, 0.6f });
-    cylinder2.color = { 0.03f, 0.03f, 0.035f };
-    cylinder2.roughness = 0.1f;
-    g_Instances.push_back(cylinder2);
+    cylinder2.material = &AddMaterial(g_DiffuseShader)
+        .SetVector("color", { 0.03f, 0.03f, 0.035f })
+        .SetFloat("roughness", 0.1f);
+    AddInstance(cylinder2);
 
     // Stands on cylinder2, lifted a hair above its top so the two faces don't coincide.
-    Instance cylinder3;
+    InstanceDescription cylinder3;
     cylinder3.mesh = MeshCylinder;
     cylinder3.transform = Transform::Translation({ 3.2f, 0.645f, 4.0f }) * Transform::Scale({ 0.3f, 0.4f, 0.3f });
-    cylinder3.material = MaterialType::Glass;
-    cylinder3.color = { 0.95f, 0.6f, 0.15f };
-    cylinder3.ior = 1.5f;
-    cylinder3.extinction = 1.5f;
-    cylinder3.roughness = 0.0f;
-    g_Instances.push_back(cylinder3);
+    cylinder3.material = &AddMaterial(g_GlassShader)
+        .SetVector("color", { 0.95f, 0.6f, 0.15f })
+        .SetFloat("extinction", 1.5f)
+        .SetFloat("roughness", 0.0f);
+    AddInstance(cylinder3);
 
-    Instance torus3;
+    InstanceDescription torus3;
     torus3.mesh = MeshTorus;
     torus3.transform = Transform::Translation({ -4.8f, 0.73f, 1.0f }) * Transform::RotationY(Radians(60.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 0.55f, 0.55f, 0.55f });
-    torus3.color = { 0.6f, 0.04f, 0.04f };
-    torus3.ior = 1.6f;
-    torus3.roughness = 0.05f;
-    g_Instances.push_back(torus3);
+    torus3.material = &AddMaterial(g_DiffuseShader)
+        .SetVector("color", { 0.6f, 0.04f, 0.04f })
+        .SetFloat("ior", 1.6f)
+        .SetFloat("roughness", 0.05f);
+    AddInstance(torus3);
 
-    Instance cylinder4;
+    InstanceDescription cylinder4;
     cylinder4.mesh = MeshCylinder;
     cylinder4.transform = Transform::Translation({ -0.4f, 0.302f, 4.5f }) * Transform::RotationY(Radians(30.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 0.3f, 0.6f, 0.3f });
-    cylinder4.color = { 0.85f, 0.35f, 0.08f };
-    g_Instances.push_back(cylinder4);
+    cylinder4.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.85f, 0.35f, 0.08f });
+    AddInstance(cylinder4);
 
-    Instance sphere6;
+    InstanceDescription sphere6;
     sphere6.mesh = MeshSphere;
     sphere6.transform = Transform::Translation({ 1.6f, 0.45f, 4.8f }) * Transform::Scale({ 0.45f, 0.45f, 0.45f });
-    sphere6.material = MaterialType::Metal;
-    sphere6.color = { 1.0f, 0.766f, 0.336f };
-    sphere6.roughness = 0.1f;
-    g_Instances.push_back(sphere6);
+    sphere6.material = &AddMaterial(g_MetalShader)
+        .SetVector("color", { 1.0f, 0.766f, 0.336f })
+        .SetFloat("roughness", 0.1f);
+    AddInstance(sphere6);
 
-    Instance cube6;
+    InstanceDescription cube6;
     cube6.mesh = MeshCube;
     cube6.transform = Transform::Translation({ -3.9f, 0.4f, 3.6f }) * Transform::RotationY(Radians(45.0f)) * Transform::Scale({ 0.4f, 0.4f, 0.4f });
-    cube6.material = MaterialType::Metal;
-    cube6.color = { 0.562f, 0.565f, 0.578f };
-    cube6.roughness = 0.0f;
-    g_Instances.push_back(cube6);
+    cube6.material = &AddMaterial(g_MetalShader)
+        .SetVector("color", { 0.562f, 0.565f, 0.578f })
+        .SetFloat("roughness", 0.0f);
+    AddInstance(cube6);
 
-    Instance torus4;
+    InstanceDescription torus4;
     torus4.mesh = MeshTorus;
     torus4.transform = Transform::Translation({ 7.5f, 0.795f, -3.5f }) * Transform::RotationY(Radians(-50.0f)) * Transform::RotationX(Radians(90.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
-    torus4.material = MaterialType::Metal;
-    torus4.color = { 0.955f, 0.638f, 0.538f };
-    torus4.roughness = 0.3f;
-    g_Instances.push_back(torus4);
+    torus4.material = &AddMaterial(g_MetalShader)
+        .SetVector("color", { 0.955f, 0.638f, 0.538f })
+        .SetFloat("roughness", 0.3f);
+    AddInstance(torus4);
 
-    Instance cube7;
+    InstanceDescription cube7;
     cube7.mesh = MeshCube;
     cube7.transform = Transform::Translation({ 9.0f, 0.6f, -2.5f }) * Transform::RotationY(Radians(30.0f)) * Transform::Scale({ 0.6f, 0.6f, 0.6f });
-    cube7.material = MaterialType::Metal;
-    cube7.color = { 0.549f, 0.556f, 0.554f };
-    cube7.roughness = 0.0f;
-    g_Instances.push_back(cube7);
+    cube7.material = &AddMaterial(g_MetalShader)
+        .SetVector("color", { 0.549f, 0.556f, 0.554f })
+        .SetFloat("roughness", 0.0f);
+    AddInstance(cube7);
 
-    Instance sphere7;
+    InstanceDescription sphere7;
     sphere7.mesh = MeshSphere;
     sphere7.transform = Transform::Translation({ -10.5f, 0.8f, -4.5f }) * Transform::Scale({ 0.8f, 0.8f, 0.8f });
-    sphere7.material = MaterialType::Metal;
-    sphere7.color = { 0.972f, 0.960f, 0.915f };
-    sphere7.roughness = 0.2f;
-    g_Instances.push_back(sphere7);
+    sphere7.material = &AddMaterial(g_MetalShader)
+        .SetVector("color", { 0.972f, 0.960f, 0.915f })
+        .SetFloat("roughness", 0.2f);
+    AddInstance(sphere7);
 }
 
 static void BuildBLASes()
@@ -411,7 +488,7 @@ void BuildTLAS(VkCommandBuffer commandBuffer, size_t frame)
 
     for (uint32_t i = 0; i < g_Instances.size(); i++)
     {
-        const Instance& source = g_Instances[i];
+        const InstanceDescription& source = g_Instances[i];
 
         VkAccelerationStructureInstanceKHR instance = {};
         memcpy(instance.transform.matrix, source.transform.m, sizeof(instance.transform.matrix));
@@ -420,8 +497,11 @@ void BuildTLAS(VkCommandBuffer commandBuffer, size_t frame)
         instance.mask = 0xFF;
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
-        // Non-opaque so shadow rays run the glass any-hit shader; radiance rays force everything opaque.
-        if (source.material == MaterialType::Glass)
+        // Non-opaque so rays run the surface's any-hit shader, as shadow rays do for glass; radiance rays force
+        // everything opaque.
+        const RayTracingSurfaceShader* shader = source.material != nullptr ? source.material->Shader() : nullptr;
+
+        if (shader != nullptr && !shader->IsOpaque())
             instance.flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
 
         instance.accelerationStructureReference = g_Meshes[source.mesh].blas.address;
@@ -455,12 +535,44 @@ void BuildTLAS(VkCommandBuffer commandBuffer, size_t frame)
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 }
 
-void CreateRayTracingScene()
+// The hit record of each instance: its material's surface shader and local data, with the buffers of its mesh.
+void GetHitRecords(RayTracingHitRecords& hitRecords)
 {
+    hitRecords.Clear();
+
+    std::vector<uint8_t> localData;
+    ShaderProperties     meshProperties; // the one thing in a record the material doesn't decide: the instance's mesh
+
+    for (const InstanceDescription& instance : g_Instances)
+    {
+        if (instance.material == nullptr)
+        {
+            hitRecords.Add(nullptr, nullptr);
+            continue;
+        }
+
+        const Mesh& mesh = g_Meshes[instance.mesh];
+
+        meshProperties.SetBuffer("Vertices", mesh.vertexBuffer.address);
+        meshProperties.SetBuffer("Indices", mesh.indexBuffer.address);
+
+        instance.material->WriteLocalData(localData, &meshProperties);
+
+        hitRecords.Add(instance.material->Shader(), localData.data());
+    }
+}
+
+bool CreateRayTracingScene(const RayTracingGlobalResources& globals)
+{
+    if (!CreateSurfaceShaders(globals))
+        return false;
+
     CreateMeshes();
     CreateInstances();
     BuildBLASes();
     CreateTLAS();
+
+    return true;
 }
 
 void DestroyRayTracingScene()
@@ -483,5 +595,10 @@ void DestroyRayTracingScene()
 
     g_Meshes.clear();
     g_Instances.clear();
+    g_Materials.clear();
+
+    g_DiffuseShader.Destroy();
+    g_MetalShader.Destroy();
+    g_GlassShader.Destroy();
 }
 #endif

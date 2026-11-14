@@ -42,6 +42,9 @@
     <ClInclude Include="source\SharedTypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="source\ShaderProperties.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="source\ShaderReflection.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -55,6 +58,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="source\RayTracingPipeline.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\RayTracingShader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="source\RayTracingMaterial.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="source\Camera.h">
@@ -83,6 +92,9 @@
     <ClCompile Include="source\Geometry.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="source\ShaderProperties.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="source\ShaderReflection.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -96,6 +108,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="source\RayTracingPipeline.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\RayTracingShader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="source\GpuTimer.cpp">

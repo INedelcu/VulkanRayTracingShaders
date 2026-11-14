@@ -2,7 +2,16 @@
 #include "TriangleMesh.hlsli"
 #include "GGX.hlsli"
 
-ConstantBuffer<MaterialConstants> Material; // data in the instance's hit record
+// What a glass material holds, filled in by name from the values its material sets on the host.
+struct GlassMaterial
+{
+    float3 color;      // what crossing a unit of it leaves of each channel
+    float  ior;        // index of refraction
+    float  extinction; // tint per unit crossed: 0 = clear, 1 = a color channel at 0 keeps 37%, 3 = keeps 5%
+    float  roughness;  // 1 is matte, 0 a mirror
+};
+
+ConstantBuffer<GlassMaterial> Material; // data in the instance's hit record
 
 // Fresnel reflectance of a smooth dielectric for unpolarized light; eta is the incident over the transmitted index of
 // refraction. Past the critical angle all light reflects: total internal reflection.
@@ -46,7 +55,7 @@ void ClosestHitGlass(inout RadiancePayload payload, in BuiltInTriangleIntersecti
         return;
     }
 
-    float3 absorption = hit.frontFace ? 1.0f : exp(-(1.0f - Material.color.rgb) * Material.extinction * RayTCurrent());
+    float3 absorption = hit.frontFace ? 1.0f : exp(-(1.0f - Material.color) * Material.extinction * RayTCurrent());
 
     payload.weight = absorption * (SmithG2(abs(nDotL), nDotV, alpha) / SmithG1(nDotV, alpha));
     payload.origin    = OffsetRayOrigin(hit.position, dot(direction, hit.geometricNormal) > 0.0f ? hit.geometricNormal : -hit.geometricNormal);
@@ -63,7 +72,7 @@ void AnyHitGlassShadow(inout ShadowPayload payload, in BuiltInTriangleIntersecti
     SurfaceHit hit            = FetchSurface(attributes);
     float3     rayDirection   = WorldRayDirection();
     float      eta            = hit.frontFace ? 1.0f / Material.ior : Material.ior;
-    float3     absorptionRate = (1.0f - Material.color.rgb) * Material.extinction;
+    float3     absorptionRate = (1.0f - Material.color) * Material.extinction;
 
     // Hits arrive in any order: entering multiplies by exp(+a t) and leaving by exp(-a t), so the product is
     // exp(-a (t_leave - t_enter)) however they come. The geometry's no-duplicate flag keeps each crossing to one call.

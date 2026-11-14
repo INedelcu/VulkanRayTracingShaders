@@ -2,7 +2,14 @@
 #include "TriangleMesh.hlsli"
 #include "GGX.hlsli"
 
-ConstantBuffer<MaterialConstants> Material; // data in the instance's hit record
+// What a metal material holds, filled in by name from the values its material sets on the host.
+struct MetalMaterial
+{
+    float3 color;     // reflectance of a head on view, the metal's tint
+    float  roughness; // 1 is matte, 0 a mirror
+};
+
+ConstantBuffer<MetalMaterial> Material; // data in the instance's hit record
 
 [shader("closesthit")]
 void ClosestHitMetal(inout RadiancePayload payload, in BuiltInTriangleIntersectionAttributes attributes)
@@ -21,7 +28,7 @@ void ClosestHitMetal(inout RadiancePayload payload, in BuiltInTriangleIntersecti
     payload.sunDirection = SampleSunDirection(payload.rngState);
 
     float  sunPdf;
-    float3 sun = EvaluateSpecularGGX(v, payload.sunDirection, n, Material.color.rgb, SunLobeAlpha(alpha, payload.pathAlpha), sunPdf);
+    float3 sun = EvaluateSpecularGGX(v, payload.sunDirection, n, Material.color, SunLobeAlpha(alpha, payload.pathAlpha), sunPdf);
 
     // After a diffuse bounce the glint would light that surface as a caustic, found too rarely to converge without
     // fireflies: like the coat, leave it out on those paths.
@@ -38,7 +45,7 @@ void ClosestHitMetal(inout RadiancePayload payload, in BuiltInTriangleIntersecti
     float3 weight;
     float  pdf;
 
-    if (!SampleSpecularGGX(v, n, Material.color.rgb, alpha, payload.rngState, direction, weight, pdf))
+    if (!SampleSpecularGGX(v, n, Material.color, alpha, payload.rngState, direction, weight, pdf))
     {
         payload.weight = 0.0f;
         return;
