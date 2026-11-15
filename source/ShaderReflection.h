@@ -7,7 +7,7 @@
 // Minimal SPIR-V reflection: every named resource variable of a module with its DescriptorSet / Binding decorations,
 // its type and, for constant buffers, its size and the members it holds; and the module's entry points.
 // The command line in the Custom Build tool is:
-// "$(DxcPath)" -T lib_6_3 -spirv -fspv-target-env=vulkan1.2 -fspv-extension=SPV_KHR_ray_tracing -fvk-use-scalar-layout -auto-binding-space 0
+// "$(DxcPath)" -T lib_6_3 -spirv -fspv-target-env=vulkan1.2 -fspv-extension=SPV_KHR_ray_tracing -fvk-use-scalar-layout -fspv-use-unknown-image-format -auto-binding-space 0
 // -HV 2021 -I "$(MSBuildProjectDirectory)\shaders" -I "$(MSBuildProjectDirectory)\source" -Fo "$(ShaderOutDir)%(Filename).spv" "%(FullPath)"
 enum class ShaderResourceType
 {

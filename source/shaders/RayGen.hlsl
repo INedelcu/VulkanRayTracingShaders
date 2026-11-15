@@ -1,9 +1,13 @@
 #include "Common.hlsli"
 
+// Input
 RaytracingAccelerationStructure AccelStruct : register(t0, space1);
-[[vk::image_format("rgba32f")]] RWTexture2D<float4> Accumulation : register(u1, space1);
-[[vk::image_format("rgba16f")]] RWTexture2D<float4> Output : register(u2, space1);
+
 ConstantBuffer<FrameConstants> Frame : register(b0, space1);
+
+// Output
+RWTexture2D<float4> Accumulation : register(u1, space1);
+RWTexture2D<float4> Output : register(u2, space1);
 
 static const float3 kSkyHorizon = float3(0.60f, 0.75f, 0.90f);
 static const float3 kSkyZenith = float3(0.07, 0.21, 0.69);

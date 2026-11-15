@@ -583,6 +583,12 @@ bool InitializeVulkan(HINSTANCE hInstance, HWND hWnd)
     VkPhysicalDeviceFeatures2 enabledFeatures = {};
     enabledFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     enabledFeatures.features.robustBufferAccess = true;
+    // The shaders are compiled with -fspv-use-unknown-image-format, so a storage image carries no format in its type
+    // and takes the one of the view bound to it, as a UAV does in D3D12. Reading and writing one that way asks for
+    // either these features or Vulkan 1.3, which the 1.4 this device is already covers; they are stated anyway, to
+    // say out loud what the shaders rely on and to keep holding if the version this targets is ever lowered.
+    enabledFeatures.features.shaderStorageImageReadWithoutFormat = true;
+    enabledFeatures.features.shaderStorageImageWriteWithoutFormat = true;
     enabledFeatures.pNext = (void*)&vulkan12Features;
 
     VkDeviceCreateInfo deviceCreateInfo =
