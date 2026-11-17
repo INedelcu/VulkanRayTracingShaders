@@ -99,6 +99,7 @@
     <ClInclude Include="source\ShaderReflection.h" />
     <ClInclude Include="source\Shaders.h" />
     <ClInclude Include="source\SharedTypes.h" />
+    <ClInclude Include="source\Textures.h" />
     <ClInclude Include="source\VulkanBuffers.h" />
     <ClInclude Include="source\VulkanDevice.h" />
     <ClInclude Include="source\VulkanFunctions.h" />
@@ -116,6 +117,7 @@
     <ClCompile Include="source\ShaderProperties.cpp" />
     <ClCompile Include="source\ShaderReflection.cpp" />
     <ClCompile Include="source\Shaders.cpp" />
+    <ClCompile Include="source\Textures.cpp" />
     <ClCompile Include="source\VulkanBuffers.cpp" />
     <ClCompile Include="source\VulkanDevice.cpp" />
     <ClCompile Include="source\VulkanImages.cpp" />
@@ -152,6 +154,13 @@
       <BuildInParallel>true</BuildInParallel>
     </CustomBuild>
   </ItemDefinitionGroup>
+  <ItemGroup>
+    <TextureFiles Include="source\textures\*.*" />
+  </ItemGroup>
+  <!-- The textures load from a folder next to the executable, the way the compiled shaders do. -->
+  <Target Name="CopyTextures" AfterTargets="Build" Inputs="@(TextureFiles)" Outputs="@(TextureFiles->'$(OutDir)textures\%(Filename)%(Extension)')">
+    <Copy SourceFiles="@(TextureFiles)" DestinationFolder="$(OutDir)textures" SkipUnchangedFiles="true" />
+  </Target>
   <Target Name="CheckVulkanSdk" BeforeTargets="CustomBuild;ClCompile">
     <Error Condition="'$(VULKAN_SDK)' == ''" Text="Vulkan SDK not found: the VULKAN_SDK environment variable is not set. This project needs the SDK's Vulkan headers and its dxc shader compiler. Download the Windows installer of Vulkan SDK $(VulkanSdkMinVersion) or newer from $(VulkanSdkDownloadUrl), run it, then restart Visual Studio so it sees VULKAN_SDK." />
     <Error Condition="'$(VULKAN_SDK)' != '' And !Exists('$(VULKAN_SDK)\Include\vulkan\vulkan.h')" Text="The Vulkan SDK in $(VULKAN_SDK) has no Vulkan headers ($(VULKAN_SDK)\Include\vulkan\vulkan.h is missing). VULKAN_SDK may point to a removed or incomplete SDK. Install Vulkan SDK $(VulkanSdkMinVersion) or newer from $(VulkanSdkDownloadUrl), then restart Visual Studio." />

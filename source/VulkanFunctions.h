@@ -140,6 +140,7 @@
     macro(vkCreateBuffer) \
     macro(vkDestroyBuffer) \
     macro(vkCmdCopyBuffer) \
+    macro(vkCmdCopyBufferToImage) \
     macro(vkBindBufferMemory) \
     macro(vkMapMemory) \
     macro(vkUnmapMemory) \

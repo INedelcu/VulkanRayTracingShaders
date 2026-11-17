@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DescriptorHeap.h"
 #include "VulkanBuffers.h"
 #include "MathUtils.h"
 #include "RayTracingMaterial.h"
@@ -17,8 +18,9 @@ struct AccelerationStructure
 
 extern AccelerationStructure g_Tlas;
 
-// Loads the surface shaders, whose global resources are bound as globals says, and creates the scene that uses them.
-bool CreateRayTracingScene(const RayTracingGlobalResources& globals);
+// Loads the surface shaders, whose global resources are bound as globals says, and creates the scene that uses
+// them. Its textures take slots of the resource heap, which is where their descriptors go.
+bool CreateRayTracingScene(const RayTracingGlobalResources& globals, DescriptorHeap& resourceHeap);
 void DestroyRayTracingScene();
 
 void GetHitRecords(RayTracingHitRecords& hitRecords);

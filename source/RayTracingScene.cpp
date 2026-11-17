@@ -1,5 +1,6 @@
 #include "RayTracingScene.h"
 #include "Geometry.h"
+#include "Textures.h"
 
 #include <cstdio>
 #include <cstring>
@@ -48,6 +49,50 @@ AccelerationStructure                   g_Tlas;
 static RayTracingSurfaceShader g_DiffuseShader;
 static RayTracingSurfaceShader g_MetalShader;
 static RayTracingSurfaceShader g_GlassShader;
+
+static std::vector<Image> g_Textures;
+static uint32_t           g_WhiteTextureSlot = UINT32_MAX;   // the texture of a material that has none of its own
+static uint32_t           g_CheckerTextureSlot = UINT32_MAX;
+static uint32_t           g_TerrainTextureSlot = UINT32_MAX;
+
+// Keeps the texture with the scene and returns the slot of its descriptor in the resource heap, which is what a
+// material's texture property holds. UINT32_MAX when the texture is empty or the heap is full.
+static uint32_t AddTexture(DescriptorHeap& resourceHeap, const Image& texture)
+{
+    Image owned = texture;
+
+    if (owned.image == VK_NULL_HANDLE)
+        return UINT32_MAX;
+
+    const uint32_t slot = resourceHeap.Allocate();
+
+    if (slot == UINT32_MAX || !resourceHeap.WriteSampledImage(slot, owned))
+    {
+        DestroyImage(owned);
+        return UINT32_MAX;
+    }
+
+    g_Textures.push_back(owned);
+
+    return slot;
+}
+
+// The textures the materials sample. A file that won't load leaves its materials white rather than stopping the
+// scene, so a missing or broken .png shows up as a message and an untextured surface.
+static bool CreateTextures(DescriptorHeap& resourceHeap)
+{
+    g_WhiteTextureSlot = AddTexture(resourceHeap, CreateWhiteTexture());
+    g_CheckerTextureSlot = AddTexture(resourceHeap, LoadTexture("Checker.png"));
+    g_TerrainTextureSlot = AddTexture(resourceHeap, LoadTexture("Terrain.png"));
+
+    if (g_CheckerTextureSlot == UINT32_MAX)
+        g_CheckerTextureSlot = g_WhiteTextureSlot;
+
+    if (g_TerrainTextureSlot == UINT32_MAX)
+        g_TerrainTextureSlot = g_WhiteTextureSlot;
+
+    return g_WhiteTextureSlot != UINT32_MAX;
+}
 
 static AccelerationStructure CreateAccelerationStructure(VkAccelerationStructureTypeKHR type, VkDeviceSize size, const char* name)
 {
@@ -128,6 +173,11 @@ static bool CreateSurfaceShaders(const RayTracingGlobalResources& globals)
     g_DiffuseShader.DefaultProperties().SetFloat("ior", 1.5f);
     g_DiffuseShader.DefaultProperties().SetFloat("roughness", 1.0f);
 
+    // White by default, so a material with no texture of its own still has one to sample and the shader needs no
+    // branch. An unset texture property would hold slot 0, which is a render target, not a texture at all.
+    g_DiffuseShader.DefaultProperties().SetTexture("BaseColorMap", g_WhiteTextureSlot);
+    g_DiffuseShader.DefaultProperties().SetVector("uvScale", { 1.0f, 1.0f });
+
     g_MetalShader.DefaultProperties().SetVector("color", { 1.0f, 1.0f, 1.0f });
     g_MetalShader.DefaultProperties().SetFloat("roughness", 1.0f);
 
@@ -158,13 +208,17 @@ static void CreateInstances()
     InstanceDescription ground;
     ground.mesh = MeshQuad;
     ground.transform = Transform::Scale({ 16.0f, 1.0f, 16.0f });
-    ground.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.50f, 0.47f, 0.43f });
+    ground.material = &AddMaterial(g_DiffuseShader)
+        .SetTexture("BaseColorMap", g_TerrainTextureSlot)
+        .SetVector("uvScale", { 16.0f, 16.0f });
     AddInstance(ground);
 
     InstanceDescription cube1;
     cube1.mesh = MeshCube;
     cube1.transform = Transform::Translation({ -3.2f, 1.0f, -0.6f }) * Transform::RotationY(Radians(25.0f));
-    cube1.material = &AddMaterial(g_DiffuseShader).SetVector("color", { 0.50f, 0.16f, 0.10f });
+    cube1.material = &AddMaterial(g_DiffuseShader)
+        .SetVector("color", { 1.0f, 1.0f, 1.0f })
+        .SetTexture("BaseColorMap", g_CheckerTextureSlot);
     AddInstance(cube1);
 
     InstanceDescription cube2;
@@ -562,9 +616,10 @@ void GetHitRecords(RayTracingHitRecords& hitRecords)
     }
 }
 
-bool CreateRayTracingScene(const RayTracingGlobalResources& globals)
+bool CreateRayTracingScene(const RayTracingGlobalResources& globals, DescriptorHeap& resourceHeap)
 {
-    if (!CreateSurfaceShaders(globals))
+    // Before the shaders: the white texture is one of the defaults a material of a shader starts with.
+    if (!CreateTextures(resourceHeap) || !CreateSurfaceShaders(globals))
         return false;
 
     CreateMeshes();
@@ -592,6 +647,13 @@ void DestroyRayTracingScene()
         DestroyBuffer(mesh.vertexBuffer);
         DestroyBuffer(mesh.indexBuffer);
     }
+
+    for (Image& texture : g_Textures)
+        DestroyImage(texture);
+
+    g_Textures.clear();
+    g_WhiteTextureSlot = UINT32_MAX;
+    g_CheckerTextureSlot = UINT32_MAX;
 
     g_Meshes.clear();
     g_Instances.clear();

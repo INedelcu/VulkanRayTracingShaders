@@ -25,10 +25,12 @@ uint32_t    g_FrameIndex = 0;
 uint32_t    g_AccumulatedFrames = 0;
 
 DescriptorHeap     g_ResourceHeap;
+DescriptorHeap     g_SamplerHeap;
 Image              g_AccumulationImage;
 Image              g_OutputImage;
 uint32_t           g_AccumulationImageSlot = UINT32_MAX;
 uint32_t           g_OutputImageSlot = UINT32_MAX;
+uint32_t           g_LinearSamplerSlot = UINT32_MAX;
 RayTracingGlobalResources g_GlobalResources;
 RayTracingRayGenShader    g_RayGenShader;
 RayTracingHitRecords      g_HitRecords;
@@ -122,6 +124,32 @@ static void CreateGlobalResources()
     // A texture a shader reads from its own record is one of these slots, held in the record as the slot's index:
     // that turns into the offset of its descriptor with the size of a slot.
     g_GlobalResources.SetHeapSlotSize(g_ResourceHeap.SlotSize());
+
+    // One sampler for every texture of every material: the textures differ per material, how they are filtered does
+    // not. It lives in the sampler heap, which is bound alongside the resource one.
+    g_GlobalResources.AddHeapResource("LinearSampler", g_SamplerHeap.SlotOffset(g_LinearSamplerSlot));
+}
+
+// Trilinear and repeating. There is one mip level to sample for now, so the mip filter only says what would happen
+// once there are more.
+static bool CreateLinearSampler()
+{
+    g_LinearSamplerSlot = g_SamplerHeap.Allocate();
+
+    if (g_LinearSamplerSlot == UINT32_MAX)
+        return false;
+
+    VkSamplerCreateInfo samplerInfo = {};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
+
+    return g_SamplerHeap.WriteSampler(g_LinearSamplerSlot, samplerInfo);
 }
 
 // Brings the pipeline and its shader binding table up to date with the scene. They are kept as long as they fit it.
@@ -149,6 +177,12 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
     g_AccumulationImageSlot = g_ResourceHeap.Allocate();
     g_OutputImageSlot = g_ResourceHeap.Allocate();
 
+    if (!g_SamplerHeap.Create(DescriptorHeap::Type::Sampler, 16, "Sampler heap") || !CreateLinearSampler())
+    {
+        MessageBox(hWnd, "Couldn't create the sampler descriptor heap. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
+        return false;
+    }
+
     if (!UpdateRenderTargets())
     {
         MessageBox(hWnd, "Couldn't create the render target images. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
@@ -167,7 +201,7 @@ bool InitializeRenderer(HINSTANCE hInstance, HWND hWnd)
     missEntryPoints[shared::RAY_TYPE_RADIANCE] = "MissRadiance";
     missEntryPoints[shared::RAY_TYPE_SHADOW] = "MissShadow";
 
-    if (!g_RayGenShader.Create("RayGen", "RayGen", missEntryPoints, g_GlobalResources) || !CreateRayTracingScene(g_GlobalResources))
+    if (!g_RayGenShader.Create("RayGen", "RayGen", missEntryPoints, g_GlobalResources) || !CreateRayTracingScene(g_GlobalResources, g_ResourceHeap))
     {
         MessageBox(hWnd, "Couldn't load the ray tracing shaders from the shaders folder. Exiting.", "Error", MB_OK | MB_ICONEXCLAMATION);
         return false;
@@ -220,6 +254,7 @@ void ShutdownRenderer()
     DestroyImage(g_AccumulationImage);
     DestroyImage(g_OutputImage);
     g_ResourceHeap.Destroy();
+    g_SamplerHeap.Destroy();
 
     DestroyRayTracingScene();
 
@@ -280,6 +315,7 @@ static VkCommandBuffer BeginFrame(uint32_t& imageIndex)
 static void RenderFrame(VkCommandBuffer cmdBuffer)
 {
     g_ResourceHeap.Bind(cmdBuffer);
+    g_SamplerHeap.Bind(cmdBuffer);
 
     BuildTLAS(cmdBuffer, g_CurrentFrame);
 

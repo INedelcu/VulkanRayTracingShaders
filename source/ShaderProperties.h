@@ -26,6 +26,7 @@ public:
     };
 
     void SetFloat(const char* name, float value);
+    void SetVector(const char* name, const Vec2& value);
     void SetVector(const char* name, const Vec3& value);
     void SetVector(const char* name, const Vec4& value);
     void SetInt(const char* name, int32_t value);

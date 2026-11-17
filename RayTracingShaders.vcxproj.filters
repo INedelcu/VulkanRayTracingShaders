@@ -27,6 +27,9 @@
     <ClInclude Include="source\VulkanDevice.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="source\Textures.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="source\VulkanBuffers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -81,6 +84,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="source\VulkanDevice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\Textures.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="source\VulkanBuffers.cpp">

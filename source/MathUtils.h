@@ -17,7 +17,15 @@ struct Vec3
     Vec3& operator+=(const Vec3& o) { x += o.x; y += o.y; z += o.z; return *this; }
 };
 
-// All four components are explicit, so a braced list of three is a Vec3 and one of four a Vec4.
+// Every component is explicit in these, so a braced list of two is a Vec2, one of three a Vec3 and one of four a Vec4.
+struct Vec2
+{
+    float x = 0.0f, y = 0.0f;
+
+    Vec2() = default;
+    constexpr Vec2(float x_, float y_) : x(x_), y(y_) {}
+};
+
 struct Vec4
 {
     float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;

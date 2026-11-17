@@ -7,6 +7,13 @@ void ShaderProperties::SetFloat(const char* name, float value)
     Set(name, ShaderPropertyType::Float, 1, &value, sizeof(value));
 }
 
+void ShaderProperties::SetVector(const char* name, const Vec2& value)
+{
+    const float values[2] = { value.x, value.y };
+
+    Set(name, ShaderPropertyType::Float, 2, values, sizeof(values));
+}
+
 void ShaderProperties::SetVector(const char* name, const Vec3& value)
 {
     const float values[3] = { value.x, value.y, value.z };

@@ -24,6 +24,7 @@ public:
     // The value of one of the shader's properties, by the name the shader declares it with, e.g.
     // SetFloat("roughness", 0.3f). Returns the material so the values of one can be set in a chain.
     RayTracingMaterial& SetFloat(const char* name, float value) { m_Properties.SetFloat(name, value); return *this; }
+    RayTracingMaterial& SetVector(const char* name, const Vec2& value) { m_Properties.SetVector(name, value); return *this; }
     RayTracingMaterial& SetVector(const char* name, const Vec3& value) { m_Properties.SetVector(name, value); return *this; }
     RayTracingMaterial& SetVector(const char* name, const Vec4& value) { m_Properties.SetVector(name, value); return *this; }
     RayTracingMaterial& SetInt(const char* name, int32_t value) { m_Properties.SetInt(name, value); return *this; }

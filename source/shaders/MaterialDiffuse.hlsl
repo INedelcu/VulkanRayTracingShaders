@@ -9,9 +9,14 @@ struct DiffuseMaterial
     float3 color;     // albedo of the diffuse base
     float  ior;       // index of refraction of the coat, 1.5 reflects 4% of a head on view
     float  roughness; // of the coat: 1 is matte, 0 a mirror
+    float2 uvScale;   // how many times the texture repeats over the mesh's own texture coordinates
 };
 
 ConstantBuffer<DiffuseMaterial> Material; // data in the instance's hit record
+
+Texture2D<float4> BaseColorMap;
+
+SamplerState LinearSampler : register(s0, space1);
 
 // A diffuse base under a dielectric coat, smooth or rough: PathTracing/Standard with metallic 0 in the Unity path
 // tracer. Each bounce follows one of the two lobes, picked by how bright each is.
@@ -22,11 +27,13 @@ void ClosestHitDiffuse(inout RadiancePayload payload, in BuiltInTriangleIntersec
     float3     v     = -WorldRayDirection();
     float      alpha = RoughnessToAlpha(Material.roughness);
 
+    float3 baseColor = Material.color * BaseColorMap.SampleLevel(LinearSampler, hit.uv * Material.uvScale, 0.0f).rgb;
+
     // The coat reflects f0 at normal incidence, from its index of refraction (4% at 1.5), and more toward grazing
     // angles. The light it doesn't reflect reaches the diffuse base.
     float  f0Root      = (Material.ior - 1.0f) / (Material.ior + 1.0f);
     float  f0          = f0Root * f0Root;
-    float3 diffuseTint = Material.color * (1.0f - f0);
+    float3 diffuseTint = baseColor * (1.0f - f0);
 
     // Interpolated normals can turn away from a grazing view.
     float3 n = dot(hit.shadingNormal, v) > 0.0f ? hit.shadingNormal : hit.geometricNormal;
@@ -50,7 +57,7 @@ void ClosestHitDiffuse(inout RadiancePayload payload, in BuiltInTriangleIntersec
 
     // The coat's share of the bounces, from the brightness of each lobe, kept within [0.1, 0.9] so neither starves.
     // Each lobe's weight is divided by the chance of picking it.
-    float coatChance = clamp(f0 / max(f0 + Luminance(Material.color), 1e-7f), 0.1f, 0.9f);
+    float coatChance = clamp(f0 / max(f0 + Luminance(baseColor), 1e-7f), 0.1f, 0.9f);
 
     if (Random(payload.rngState) < coatChance)
     {
