@@ -3,7 +3,7 @@
 #include "VulkanImages.h"
 
 // Uploads 8 bit RGBA pixels as an sRGB texture in VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ready for a sampled image
-// descriptor in the resource heap. One mip level: a ray has no neighbours to take derivatives from, so the shaders
+// descriptor in the resource heap. One mip level: a ray has no neighbors to take derivatives from, so the shaders
 // sample level 0 and nothing below it would be chosen.
 Image CreateTexture(const void* rgba, VkExtent2D extent, const char* name);
 
